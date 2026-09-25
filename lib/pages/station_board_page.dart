@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
-import '../widgets/arrival_badge.dart';
 import '../widgets/line_map.dart';
 import '../widgets/line_timeline.dart';
 import '../widgets/station_strip.dart';
@@ -17,8 +16,12 @@ class StationBoardPage extends StatefulWidget {
   final String stationName;
   final String? lat;
   final String? lng;
-  const StationBoardPage(
-      {super.key, required this.stationName, this.lat, this.lng});
+  const StationBoardPage({
+    super.key,
+    required this.stationName,
+    this.lat,
+    this.lng,
+  });
 
   @override
   State<StationBoardPage> createState() => _StationBoardPageState();
@@ -40,6 +43,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
   bool _verticalAxis = false; // 站牌轴纵向（默认横向滑条）
   int _order = 1; // 当前查询站序（纵向时间轴里点站点可切换）
   Timer? _timer;
+  String? _lastBoardKey; // 最近打开过的方向（列表里标「当前」）
 
   @override
   void initState() {
@@ -63,8 +67,12 @@ class _StationBoardPageState extends State<StationBoardPage> {
       _error = null;
     });
     try {
-      final lines = await app.client
-          .stationLines(app.city, _name, lat: widget.lat, lng: widget.lng);
+      final lines = await app.client.stationLines(
+        app.city,
+        _name,
+        lat: widget.lat,
+        lng: widget.lng,
+      );
       if (!mounted) return;
       if (lines.isEmpty) {
         final cands = await app.client.searchStation(app.city, _name);
@@ -75,11 +83,14 @@ class _StationBoardPageState extends State<StationBoardPage> {
         _lines = lines;
         _phase = _Phase.lines;
       }
-      app.addHistory(SavedItem(
+      app.addHistory(
+        SavedItem(
           type: 'station',
           city: app.city,
           name: _name,
-          at: DateTime.now().millisecondsSinceEpoch));
+          at: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
       setState(() {});
     } catch (e) {
       if (!mounted) return;
@@ -96,16 +107,23 @@ class _StationBoardPageState extends State<StationBoardPage> {
     setState(() {
       _selected = l;
       _order = l.stationOrder;
+      _lastBoardKey = '${l.lineName}|${l.upperOrDown}';
       _phase = _Phase.board;
       _rt = null;
     });
     _timer?.cancel();
     try {
-      _detail = await app.client.lineStations(app.city, l.lineName, l.upperOrDown);
+      _detail = await app.client.lineStations(
+        app.city,
+        l.lineName,
+        l.upperOrDown,
+      );
       if (!mounted) return;
       await _refreshRt();
       _timer = Timer.periodic(
-          Duration(seconds: app.refreshSeconds), (_) => _refreshRt(silent: true));
+        Duration(seconds: app.refreshSeconds),
+        (_) => _refreshRt(silent: true),
+      );
     } catch (e) {
       if (mounted) showError(context, e);
     }
@@ -117,8 +135,12 @@ class _StationBoardPageState extends State<StationBoardPage> {
     final app = context.read<AppState>();
     if (!silent) setState(() => _rtLoading = true);
     try {
-      final rt = await app.client
-          .realtime(app.city, l.lineName, l.upperOrDown, _order);
+      final rt = await app.client.realtime(
+        app.city,
+        l.lineName,
+        l.upperOrDown,
+        _order,
+      );
       if (!mounted) return;
       setState(() => _rt = rt);
     } catch (e) {
@@ -152,12 +174,15 @@ class _StationBoardPageState extends State<StationBoardPage> {
           title: Text(_name),
           actions: [
             IconButton(
-              onPressed: () => app.toggleFavorite(SavedItem(
+              onPressed: () => app.toggleFavorite(
+                SavedItem(
                   type: 'station',
                   city: app.city,
                   name: _name,
                   subtitle: _lines == null ? null : '${_lines!.length}条线路',
-                  at: DateTime.now().millisecondsSinceEpoch)),
+                  at: DateTime.now().millisecondsSinceEpoch,
+                ),
+              ),
               icon: Icon(app.isFavorite(fav) ? Icons.star : Icons.star_border),
               tooltip: '收藏本站',
             ),
@@ -176,28 +201,117 @@ class _StationBoardPageState extends State<StationBoardPage> {
 
   Widget _linesView(BuildContext context) {
     if (_error != null) {
-      return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$_error', textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        FilledButton.tonal(onPressed: _loadLines, child: const Text('重试')),
-      ]));
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$_error', textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton.tonal(onPressed: _loadLines, child: const Text('重试')),
+          ],
+        ),
+      );
     }
     final lines = _lines;
     if (lines == null) return const SizedBox.shrink();
     if (lines.isEmpty) return const Center(child: Text('该站暂无线路数据'));
-    return ListView.builder(
-      itemCount: lines.length,
-      itemBuilder: (_, i) {
-        final l = lines[i];
-        return ListTile(
-          leading: const Icon(Icons.directions_bus_outlined),
-          title: Text('${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
-              style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('本站站序 ${l.stationOrder}'),
-          trailing: ArrivalBadge(arrival: arrivalOf(l)),
-          onTap: () => _openBoard(l),
-        );
-      },
+    // 复刻原版「多线路对比」样式：
+    // 车号(粗体) + 「当前」橙框徽章 | 右侧橙色状态文字；下行灰色「方向 …」；细分隔线。
+    const orange = Color(0xFFF2691B);
+    const green = Color(0xFF3CB454);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text(
+            '多线路对比',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+          ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            itemCount: lines.length,
+            separatorBuilder: (_, _) => const Divider(
+              height: 1,
+              thickness: 0.5,
+              indent: 16,
+              endIndent: 16,
+            ),
+            itemBuilder: (_, i) {
+              final l = lines[i];
+              final arrival = arrivalOf(l);
+              final statusColor = switch (arrival.state) {
+                ArrivalState.arriving => green,
+                ArrivalState.noService => orange,
+                _ => orange,
+              };
+              final isCurrent =
+                  _lastBoardKey == '${l.lineName}|${l.upperOrDown}';
+              return InkWell(
+                onTap: () => _openBoard(l),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            l.lineName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          if (isCurrent) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: orange),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '当前',
+                                style: TextStyle(fontSize: 11, color: orange),
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          Text(
+                            arrival.summary,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '方向 ${l.upperOrDown == '1' ? '上行' : '下行'}'
+                        ' · 本站第${l.stationOrder}站',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -207,8 +321,10 @@ class _StationBoardPageState extends State<StationBoardPage> {
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('「$_name」未精确命中，以下是候选站：',
-              style: Theme.of(context).textTheme.bodyMedium),
+          child: Text(
+            '「$_name」未精确命中，以下是候选站：',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
         ),
         for (final c in cands)
           ListTile(
@@ -240,21 +356,31 @@ class _StationBoardPageState extends State<StationBoardPage> {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: ListTile(
         leading: IconButton(
-            onPressed: _backToLines, icon: const Icon(Icons.arrow_back)),
-        title: Text('${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+          onPressed: _backToLines,
+          icon: const Icon(Icons.arrow_back),
+        ),
+        title: Text(
+          '${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
         subtitle: Text('本站站序 $_order · 点按刷新'),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          axisToggle,
-          if (_rtLoading)
-            const SizedBox(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            axisToggle,
+            if (_rtLoading)
+              const SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2))
-          else
-            IconButton(
-                onPressed: () => _refreshRt(), icon: const Icon(Icons.refresh)),
-        ]),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              IconButton(
+                onPressed: () => _refreshRt(),
+                icon: const Icon(Icons.refresh),
+              ),
+          ],
+        ),
         onTap: () => _refreshRt(),
       ),
     );
@@ -262,75 +388,83 @@ class _StationBoardPageState extends State<StationBoardPage> {
         ? SizedBox(
             height: 180,
             child: LineMapWidget(
-                detail: _detail!, rt: _rt, selectedOrder: _order))
+              detail: _detail!,
+              rt: _rt,
+              selectedOrder: _order,
+            ),
+          )
         : null;
 
     if (_verticalAxis) {
       // 纵向站轴: 时间轴占满余下空间, 预测卡固定底部
-      return Column(children: [
-        ?mapCard,
-        header,
-        Expanded(
-          child: Card(
+      return Column(
+        children: [
+          ?mapCard,
+          header,
+          Expanded(
+            child: Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: _detail == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : LineTimeline(
+                        detail: _detail!,
+                        rt: _rt,
+                        selectedOrder: _order,
+                        rtLoading: _rtLoading,
+                        onSelectStation: (o) {
+                          setState(() => _order = o);
+                          _refreshRt();
+                        },
+                      ),
+              ),
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: _predictions(context, rt, cs),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          ?mapCard,
+          header,
+          Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 8),
               child: _detail == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : LineTimeline(
+                  ? const SizedBox(
+                      height: 120,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : StationStrip(
                       detail: _detail!,
                       rt: _rt,
-                      selectedOrder: _order,
-                      rtLoading: _rtLoading,
-                      onSelectStation: (o) {
+                      currentOrder: _order,
+                      onStationTap: (o) {
                         setState(() => _order = o);
                         _refreshRt();
                       },
                     ),
             ),
           ),
-        ),
-        Card(
-          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: _predictions(context, rt, cs),
+          Card(
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: _predictions(context, rt, cs),
+            ),
           ),
-        ),
-      ]);
-    }
-
-    return SingleChildScrollView(
-      child: Column(
-      children: [
-        ?mapCard,
-        header,
-        Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: SizedBox(
-                height: 120,
-                child: _detail == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : StationStrip(
-                        detail: _detail!,
-                        rt: _rt,
-                        currentOrder: _order,
-                        onStationTap: (o) {
-                          setState(() => _order = o);
-                          _refreshRt();
-                        })),
-          ),
-        ),
-        Card(
-          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: _predictions(context, rt, cs),
-          ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -340,13 +474,17 @@ class _StationBoardPageState extends State<StationBoardPage> {
       return const Center(child: CircularProgressIndicator());
     }
     if (rt.stopped) {
-      return const Center(child: Text('该线路已停运', style: TextStyle(fontSize: 16)));
+      return const Center(
+        child: Text('该线路已停运', style: TextStyle(fontSize: 16)),
+      );
     }
     if (!rt.hasRealtime) {
       return Center(
-          child: Text(
-              rt.planTime.isEmpty ? '暂无实时数据' : '非实时时段（计划班次 ${rt.planTime}）',
-              style: const TextStyle(fontSize: 15)));
+        child: Text(
+          rt.planTime.isEmpty ? '暂无实时数据' : '非实时时段（计划班次 ${rt.planTime}）',
+          style: const TextStyle(fontSize: 15),
+        ),
+      );
     }
     final preds = rt.predictions.where((p) => p.count >= 0).toList();
     return Column(
@@ -358,31 +496,42 @@ class _StationBoardPageState extends State<StationBoardPage> {
             child: Center(child: Text('暂无车辆接近')),
           )
         else ...[
-          Text(preds.first.busNumber,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+          Text(
+            preds.first.busNumber,
+            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+          ),
           const SizedBox(height: 4),
           Text(
-              '${preds.first.tips} · 约${preds.first.timeTips} · ${preds.first.distTips}',
-              style: TextStyle(
-                  fontSize: 18, color: cs.primary, fontWeight: FontWeight.w700)),
+            '${preds.first.tips} · 约${preds.first.timeTips} · ${preds.first.distTips}',
+            style: TextStyle(
+              fontSize: 18,
+              color: cs.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
           const Divider(height: 20),
           for (final p in preds.skip(1).take(4))
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(children: [
-                Text(p.busNumber),
-                const Spacer(),
-                Text('${p.tips} · ${p.timeTips} · ${p.distTips}',
-                    style: const TextStyle(fontSize: 13)),
-              ]),
+              child: Row(
+                children: [
+                  Text(p.busNumber),
+                  const Spacer(),
+                  Text(
+                    '${p.tips} · ${p.timeTips} · ${p.distTips}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ),
             ),
         ],
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerRight,
           child: Text(
-              '运营中${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'} · ${rt.buses.length}辆车',
-              style: Theme.of(context).textTheme.bodySmall),
+            '运营中${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'} · ${rt.buses.length}辆车',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ),
       ],
     );

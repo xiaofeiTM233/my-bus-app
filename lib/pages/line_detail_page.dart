@@ -15,8 +15,12 @@ class LineDetailPage extends StatefulWidget {
   final String lineName;
   final String dir;
   final int? initialOrder;
-  const LineDetailPage(
-      {super.key, required this.lineName, required this.dir, this.initialOrder});
+  const LineDetailPage({
+    super.key,
+    required this.lineName,
+    required this.dir,
+    this.initialOrder,
+  });
 
   @override
   State<LineDetailPage> createState() => _LineDetailPageState();
@@ -59,13 +63,16 @@ class _LineDetailPageState extends State<LineDetailPage> {
       final d = await app.client.lineStations(app.city, widget.lineName, _dir);
       if (!mounted) return;
       _detail = d;
-      app.addHistory(SavedItem(
+      app.addHistory(
+        SavedItem(
           type: 'line',
           city: app.city,
           name: widget.lineName,
           dir: _dir,
           subtitle: d.stations.isEmpty ? null : '开往${d.stations.last.showName}',
-          at: DateTime.now().millisecondsSinceEpoch));
+          at: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
       if (widget.initialOrder != null && _selectedOrder == null) {
         _selectStation(widget.initialOrder!, refresh: false);
         await _fetchRt();
@@ -82,7 +89,9 @@ class _LineDetailPageState extends State<LineDetailPage> {
     setState(() => _selectedOrder = order);
     _timer?.cancel();
     _timer = Timer.periodic(
-        Duration(seconds: _app.refreshSeconds), (_) => _fetchRt(silent: true));
+      Duration(seconds: _app.refreshSeconds),
+      (_) => _fetchRt(silent: true),
+    );
     if (refresh) _fetchRt();
   }
 
@@ -92,7 +101,12 @@ class _LineDetailPageState extends State<LineDetailPage> {
     final app = context.read<AppState>();
     if (!silent) setState(() => _rtLoading = true);
     try {
-      final rt = await app.client.realtime(app.city, widget.lineName, _dir, order);
+      final rt = await app.client.realtime(
+        app.city,
+        widget.lineName,
+        _dir,
+        order,
+      );
       if (!mounted) return;
       setState(() => _rt = rt);
     } catch (e) {
@@ -118,17 +132,19 @@ class _LineDetailPageState extends State<LineDetailPage> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final fav = SavedItem(
-        type: 'line',
-        city: app.city,
-        name: widget.lineName,
-        dir: _dir,
-        at: 0);
+      type: 'line',
+      city: app.city,
+      name: widget.lineName,
+      dir: _dir,
+      at: 0,
+    );
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.lineName),
         actions: [
           IconButton(
-            onPressed: () => app.toggleFavorite(SavedItem(
+            onPressed: () => app.toggleFavorite(
+              SavedItem(
                 type: 'line',
                 city: app.city,
                 name: widget.lineName,
@@ -136,7 +152,9 @@ class _LineDetailPageState extends State<LineDetailPage> {
                 subtitle: _detail == null || _detail!.stations.isEmpty
                     ? null
                     : '开往${_detail!.stations.last.showName}',
-                at: DateTime.now().millisecondsSinceEpoch)),
+                at: DateTime.now().millisecondsSinceEpoch,
+              ),
+            ),
             icon: Icon(app.isFavorite(fav) ? Icons.star : Icons.star_border),
             tooltip: '收藏本方向',
           ),
@@ -163,43 +181,50 @@ class _LineDetailPageState extends State<LineDetailPage> {
     if (_loading) return _loadingView();
     if (_error != null) {
       return Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('$_error', textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        FilledButton.tonal(onPressed: _load, child: const Text('重试')),
-      ]));
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$_error', textAlign: TextAlign.center),
+            const SizedBox(height: 12),
+            FilledButton.tonal(onPressed: _load, child: const Text('重试')),
+          ],
+        ),
+      );
     }
     final d = _detail!;
     return Column(
       children: [
         if (app.mapAlwaysOn)
           SizedBox(
-              height: 200,
-              child: LineMapWidget(
-                  detail: d, rt: _rt, selectedOrder: _selectedOrder)),
+            height: 200,
+            child: LineMapWidget(
+              detail: d,
+              rt: _rt,
+              selectedOrder: _selectedOrder,
+            ),
+          ),
         _headerCard(context, d),
         if (_selectedOrder != null) _predictionCard(context),
         Expanded(
           child: _mapView
-              ? LineMapWidget(
-                  detail: d, rt: _rt, selectedOrder: _selectedOrder)
+              ? LineMapWidget(detail: d, rt: _rt, selectedOrder: _selectedOrder)
               : _horizontalAxis
-                  ? Card(
-                      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                      child: SizedBox(
-                          height: 150,
-                          child: StationStrip(
-                              detail: d,
-                              rt: _rt,
-                              currentOrder: _selectedOrder ?? 1,
-                              onStationTap: _selectStation)))
-                  : LineTimeline(
-                      detail: d,
-                      rt: _rt,
-                      selectedOrder: _selectedOrder,
-                      onSelectStation: _selectStation,
-                      rtLoading: _rtLoading,
-                    ),
+              ? Card(
+                  margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                  child: StationStrip(
+                    detail: d,
+                    rt: _rt,
+                    currentOrder: _selectedOrder ?? 1,
+                    onStationTap: _selectStation,
+                  ),
+                )
+              : LineTimeline(
+                  detail: d,
+                  rt: _rt,
+                  selectedOrder: _selectedOrder,
+                  onSelectStation: _selectStation,
+                  rtLoading: _rtLoading,
+                ),
         ),
       ],
     );
@@ -213,26 +238,34 @@ class _LineDetailPageState extends State<LineDetailPage> {
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Padding(
         padding: const EdgeInsets.all(10),
-        child: Column(children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: '1', label: Text('上行')),
-              ButtonSegment(value: '2', label: Text('下行')),
-            ],
-            selected: {_dir},
-            onSelectionChanged: (s) => _switchDir(s.first),
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-                child: Text(
+        child: Column(
+          children: [
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '1', label: Text('上行')),
+                ButtonSegment(value: '2', label: Text('下行')),
+              ],
+              selected: {_dir},
+              onSelectionChanged: (s) => _switchDir(s.first),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
                     '${d.stations.isEmpty ? '' : '始发 ${d.stations.first.showName}'}'
                     '${d.stations.isEmpty ? '' : ' → 终到 ${d.stations.last.showName}'}',
-                    style: const TextStyle(fontSize: 13))),
-            Text('首班 ${fl?.first ?? '--'} · 末班 ${fl?.last ?? '--'} · 共${d.stations.length}站',
-                style: Theme.of(context).textTheme.bodySmall),
-          ]),
-        ]),
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+                Text(
+                  '首班 ${fl?.first ?? '--'} · 末班 ${fl?.last ?? '--'} · 共${d.stations.length}站',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -259,34 +292,55 @@ class _LineDetailPageState extends State<LineDetailPage> {
       color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
       child: Padding(
         padding: const EdgeInsets.all(10),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Text('到站预测 · ${station == null ? '' : stationNameHorizontal(station.showName)}(站序$_selectedOrder)',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const Spacer(),
-            if (_rtLoading)
-              const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(width: 6),
-            Text(stateText, style: Theme.of(context).textTheme.bodySmall),
-          ]),
-          const SizedBox(height: 6),
-          if (rt != null && rt.predictions.isNotEmpty)
-            ...rt.predictions.take(3).map((p) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(children: [
-                    Text(p.busNumber,
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 10),
-                    Text('${p.tips} · ${p.timeTips} · ${p.distTips}',
-                        style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
-                  ]),
-                ))
-          else if (rt != null)
-            const Text('暂无到站预测', style: TextStyle(color: Colors.grey)),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '到站预测 · ${station == null ? '' : stationNameHorizontal(station.showName)}(站序$_selectedOrder)',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const Spacer(),
+                if (_rtLoading)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                const SizedBox(width: 6),
+                Text(stateText, style: Theme.of(context).textTheme.bodySmall),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (rt != null && rt.predictions.isNotEmpty)
+              ...rt.predictions
+                  .take(3)
+                  .map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Row(
+                        children: [
+                          Text(
+                            p.busNumber,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: 10),
+                          Text(
+                            '${p.tips} · ${p.timeTips} · ${p.distTips}',
+                            style: TextStyle(
+                              color: cs.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+            else if (rt != null)
+              const Text('暂无到站预测', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
       ),
     );
   }
