@@ -82,7 +82,7 @@ class LineTimeline extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(s.showName,
+                child: Text(stationNameHorizontal(s.showName),
                     style: TextStyle(
                         fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
               ),

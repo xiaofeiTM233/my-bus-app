@@ -64,6 +64,7 @@ class AppState extends ChangeNotifier {
   List<City> cities = [];
   bool citiesLoaded = false;
   int refreshSeconds = 10; // 自动刷新间隔（≥6）
+  bool mapAlwaysOn = false; // 首页顶部常驻地图
   List<SavedItem> favorites = [];
   List<SavedItem> history = [];
 
@@ -74,6 +75,7 @@ class AppState extends ChangeNotifier {
     final p = _prefs!;
     city = p.getString('city') ?? '';
     refreshSeconds = p.getInt('refreshSeconds') ?? 10;
+    mapAlwaysOn = p.getBool('mapAlwaysOn') ?? false;
     favorites = _decodeList(p.getString('favorites'));
     history = _decodeList(p.getString('history'));
     notifyListeners();
@@ -109,6 +111,12 @@ class AppState extends ChangeNotifier {
   Future<void> setCity(String name) async {
     city = name;
     await _prefs?.setString('city', name);
+    notifyListeners();
+  }
+
+  Future<void> setMapAlwaysOn(bool v) async {
+    mapAlwaysOn = v;
+    await _prefs?.setBool('mapAlwaysOn', v);
     notifyListeners();
   }
 

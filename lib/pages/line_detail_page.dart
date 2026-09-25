@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../utils/ui.dart';
 import '../widgets/line_map.dart';
 import '../widgets/line_timeline.dart';
+import '../widgets/station_strip.dart';
 
 /// 线路详情：方向切换 + 站点时间轴/地图 + 选中站实时轮询。
 class LineDetailPage extends StatefulWidget {
@@ -30,6 +31,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
   RealTime? _rt;
   bool _rtLoading = false;
   bool _mapView = false;
+  bool _horizontalAxis = false; // 站点轴横向（默认纵向时间轴）
   Timer? _timer;
 
   @override
@@ -139,6 +141,13 @@ class _LineDetailPageState extends State<LineDetailPage> {
             tooltip: '收藏本方向',
           ),
           IconButton(
+            onPressed: _mapView
+                ? null
+                : () => setState(() => _horizontalAxis = !_horizontalAxis),
+            icon: Icon(_horizontalAxis ? Icons.swap_vert : Icons.swap_horiz),
+            tooltip: _mapView ? '时间轴' : (_horizontalAxis ? '纵向站轴' : '横向站轴'),
+          ),
+          IconButton(
             onPressed: () => setState(() => _mapView = !_mapView),
             icon: Icon(_mapView ? Icons.view_list : Icons.map_outlined),
             tooltip: _mapView ? '时间轴' : '地图',
@@ -150,6 +159,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
   }
 
   Widget _buildBody(BuildContext context) {
+    final app = context.watch<AppState>();
     if (_loading) return _loadingView();
     if (_error != null) {
       return Center(
@@ -162,19 +172,34 @@ class _LineDetailPageState extends State<LineDetailPage> {
     final d = _detail!;
     return Column(
       children: [
+        if (app.mapAlwaysOn)
+          SizedBox(
+              height: 200,
+              child: LineMapWidget(
+                  detail: d, rt: _rt, selectedOrder: _selectedOrder)),
         _headerCard(context, d),
         if (_selectedOrder != null) _predictionCard(context),
         Expanded(
           child: _mapView
               ? LineMapWidget(
                   detail: d, rt: _rt, selectedOrder: _selectedOrder)
-              : LineTimeline(
-                  detail: d,
-                  rt: _rt,
-                  selectedOrder: _selectedOrder,
-                  onSelectStation: _selectStation,
-                  rtLoading: _rtLoading,
-                ),
+              : _horizontalAxis
+                  ? Card(
+                      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      child: SizedBox(
+                          height: 150,
+                          child: StationStrip(
+                              detail: d,
+                              rt: _rt,
+                              currentOrder: _selectedOrder ?? 1,
+                              onStationTap: _selectStation)))
+                  : LineTimeline(
+                      detail: d,
+                      rt: _rt,
+                      selectedOrder: _selectedOrder,
+                      onSelectStation: _selectStation,
+                      rtLoading: _rtLoading,
+                    ),
         ),
       ],
     );
@@ -236,7 +261,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
         padding: const EdgeInsets.all(10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Text('到站预测 · ${station?.showName ?? ''}(站序$_selectedOrder)',
+            Text('到站预测 · ${station == null ? '' : stationNameHorizontal(station.showName)}(站序$_selectedOrder)',
                 style: const TextStyle(fontWeight: FontWeight.w700)),
             const Spacer(),
             if (_rtLoading)

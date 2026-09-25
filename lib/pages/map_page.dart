@@ -42,6 +42,7 @@ class _MapPageState extends State<MapPage> {
                     'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                 subdomains: const ['1', '2', '3', '4'],
                 userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
+                errorTileCallback: (tile, error, stack) {},
               ),
               MarkerLayer(markers: _markers(context)),
             ],

@@ -7,11 +7,13 @@ class StationStrip extends StatefulWidget {
   final LineDetail detail;
   final RealTime? rt;
   final int currentOrder;
+  final ValueChanged<int>? onStationTap;
   const StationStrip(
       {super.key,
       required this.detail,
       required this.rt,
-      required this.currentOrder});
+      required this.currentOrder,
+      this.onStationTap});
 
   @override
   State<StationStrip> createState() => _StationStripState();
@@ -67,6 +69,10 @@ class _StationStripState extends State<StationStrip> {
       final selected = s.order == widget.currentOrder;
       children.add(SizedBox(
         width: 76,
+        child: GestureDetector(
+        onTap: widget.onStationTap == null
+            ? null
+            : () => widget.onStationTap!(s.order),
         child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
           Text('${s.order}',
               style: TextStyle(
@@ -84,7 +90,7 @@ class _StationStripState extends State<StationStrip> {
             ),
           ),
           Text(
-            s.showName,
+            stationNameHorizontal(s.showName),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -96,6 +102,7 @@ class _StationStripState extends State<StationStrip> {
             ),
           ),
         ]),
+        ),
       ));
       final buses = moving[i] ?? const <BusInfo>[];
       if (buses.isNotEmpty) {

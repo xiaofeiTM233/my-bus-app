@@ -29,6 +29,13 @@ class SettingsPage extends StatelessWidget {
                   if (name != null && name.isNotEmpty) await app.setCity(name);
                 },
               ),
+              SwitchListTile(
+                secondary: const Icon(Icons.map_outlined),
+                title: const Text('地图常驻'),
+                subtitle: const Text('在首页顶部显示地图与附近站点'),
+                value: app.mapAlwaysOn,
+                onChanged: (v) => app.setMapAlwaysOn(v),
+              ),
               ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('自动刷新间隔'),

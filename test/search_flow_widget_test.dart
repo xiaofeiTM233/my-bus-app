@@ -6,78 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:my_bus_app/api/mybus_client.dart';
-import 'package:my_bus_app/models/models.dart';
 import 'package:my_bus_app/pages/search_page.dart';
 import 'package:my_bus_app/state/app_state.dart';
 
-class FakeClient implements MyBusClient {
-  @override
-  Future<List<LineSummary>> searchLine(String city, String keyword) async => [
-        LineSummary(
-            lineName: '1路', upperOrDown: '1', from: '长冲铺', to: '兴义粮油市场', company: ''),
-        LineSummary(
-            lineName: '1路', upperOrDown: '2', from: '兴义粮油市场', to: '长冲铺', company: ''),
-      ];
+import 'fake_client.dart';
 
-  @override
-  Future<LineDetail> lineStations(String city, String lineName, String dir) async =>
-      LineDetail(
-        routeName: lineName,
-        upperOrDown: dir,
-        comments: '',
-        firstLast: [FirstLast(first: '06:20', last: '18:40')],
-        stations: List.generate(
-          5,
-          (i) => LineStation(
-              showName: '站${i + 1}',
-              order: i + 1,
-              lat: 25.86 + i * 0.001,
-              lon: 113.04 + i * 0.001,
-              status: 1,
-              niheIndex: i),
-        ),
-        track: const [],
-      );
-
-  @override
-  Future<RealTime> realtime(
-          String city, String lineName, String dir, int order) async =>
-      RealTime(
-          runState: 0,
-          hasReal: 1,
-          planTime: '12:00',
-          stations: [],
-          buses: [
-            BusInfo(
-                index: order - 1,
-                busNumber: '湘L12345',
-                statusType: '2',
-                stationName: '站$order',
-                lat: 25.861,
-                lng: 113.041,
-                niheIndex: 5,
-                angle: 90,
-                distToStation: 100,
-                recTime: 0),
-          ],
-          disList: [],
-          speedList: [],
-          predictions: [
-            RTimePrediction(
-                busNumber: '湘L12345',
-                count: 2,
-                time: 5,
-                distance: 800,
-                tips: '2站',
-                timeTips: '5分钟',
-                distTips: '800米'),
-          ]);
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      throw UnimplementedError('fake 未实现: ${invocation.memberName}');
-}
 
 void main() {
   testWidgets('输入即搜: onChanged 立即搜索', (tester) async {

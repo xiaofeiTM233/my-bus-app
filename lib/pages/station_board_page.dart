@@ -7,6 +7,8 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
 import '../widgets/arrival_badge.dart';
+import '../widgets/line_map.dart';
+import '../widgets/line_timeline.dart';
 import '../widgets/station_strip.dart';
 
 /// 站牌页：站点各线路（CMD115）→ 选线路进入横滑站牌（CMD103+CMD104 轮询）。
@@ -35,13 +37,17 @@ class _StationBoardPageState extends State<StationBoardPage> {
   LineDetail? _detail;
   RealTime? _rt;
   bool _rtLoading = false;
+  bool _verticalAxis = false; // 站牌轴纵向（默认横向滑条）
+  int _order = 1; // 当前查询站序（纵向时间轴里点站点可切换）
   Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _name = widget.stationName;
-    _loadLines();
+    // 帧后执行: _loadLines 的错误路径会用到 ScaffoldMessenger(inherited),
+    // initState 期间同步调用会抛 dependOnInherited 异常
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadLines());
   }
 
   @override
@@ -89,6 +95,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
     final app = context.read<AppState>();
     setState(() {
       _selected = l;
+      _order = l.stationOrder;
       _phase = _Phase.board;
       _rt = null;
     });
@@ -111,7 +118,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
     if (!silent) setState(() => _rtLoading = true);
     try {
       final rt = await app.client
-          .realtime(app.city, l.lineName, l.upperOrDown, l.stationOrder);
+          .realtime(app.city, l.lineName, l.upperOrDown, _order);
       if (!mounted) return;
       setState(() => _rt = rt);
     } catch (e) {
@@ -224,26 +231,80 @@ class _StationBoardPageState extends State<StationBoardPage> {
     final l = _selected!;
     final rt = _rt;
     final cs = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Card(
-          margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: ListTile(
-            leading: IconButton(
-                onPressed: _backToLines, icon: const Icon(Icons.arrow_back)),
-            title: Text('${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text('本站站序 ${l.stationOrder} · 点按刷新'),
-            trailing: _rtLoading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : IconButton(
-                    onPressed: () => _refreshRt(), icon: const Icon(Icons.refresh)),
-            onTap: () => _refreshRt(),
+    final axisToggle = IconButton(
+      onPressed: () => setState(() => _verticalAxis = !_verticalAxis),
+      icon: Icon(_verticalAxis ? Icons.swap_horiz : Icons.swap_vert),
+      tooltip: _verticalAxis ? '横向站牌' : '纵向站轴',
+    );
+    final header = Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: ListTile(
+        leading: IconButton(
+            onPressed: _backToLines, icon: const Icon(Icons.arrow_back)),
+        title: Text('${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text('本站站序 $_order · 点按刷新'),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          axisToggle,
+          if (_rtLoading)
+            const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+          else
+            IconButton(
+                onPressed: () => _refreshRt(), icon: const Icon(Icons.refresh)),
+        ]),
+        onTap: () => _refreshRt(),
+      ),
+    );
+    final mapCard = (context.read<AppState>().mapAlwaysOn && _detail != null)
+        ? SizedBox(
+            height: 180,
+            child: LineMapWidget(
+                detail: _detail!, rt: _rt, selectedOrder: _order))
+        : null;
+
+    if (_verticalAxis) {
+      // 纵向站轴: 时间轴占满余下空间, 预测卡固定底部
+      return Column(children: [
+        ?mapCard,
+        header,
+        Expanded(
+          child: Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: _detail == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : LineTimeline(
+                      detail: _detail!,
+                      rt: _rt,
+                      selectedOrder: _order,
+                      rtLoading: _rtLoading,
+                      onSelectStation: (o) {
+                        setState(() => _order = o);
+                        _refreshRt();
+                      },
+                    ),
+            ),
           ),
         ),
+        Card(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: _predictions(context, rt, cs),
+          ),
+        ),
+      ]);
+    }
+
+    return SingleChildScrollView(
+      child: Column(
+      children: [
+        ?mapCard,
+        header,
         Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Padding(
@@ -253,19 +314,24 @@ class _StationBoardPageState extends State<StationBoardPage> {
                 child: _detail == null
                     ? const Center(child: CircularProgressIndicator())
                     : StationStrip(
-                        detail: _detail!, rt: _rt, currentOrder: l.stationOrder)),
+                        detail: _detail!,
+                        rt: _rt,
+                        currentOrder: _order,
+                        onStationTap: (o) {
+                          setState(() => _order = o);
+                          _refreshRt();
+                        })),
           ),
         ),
-        Expanded(
-          child: Card(
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: _predictions(context, rt, cs),
-            ),
+        Card(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: _predictions(context, rt, cs),
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -287,7 +353,10 @@ class _StationBoardPageState extends State<StationBoardPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (preds.isEmpty)
-          const Expanded(child: Center(child: Text('暂无车辆接近')))
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Center(child: Text('暂无车辆接近')),
+          )
         else ...[
           Text(preds.first.busNumber,
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
@@ -308,9 +377,9 @@ class _StationBoardPageState extends State<StationBoardPage> {
               ]),
             ),
         ],
-        const Spacer(),
+        const SizedBox(height: 10),
         Align(
-          alignment: Alignment.bottomRight,
+          alignment: Alignment.centerRight,
           child: Text(
               '运营中${rt.planTime.isEmpty ? '' : ' · planTime ${rt.planTime}'} · ${rt.buses.length}辆车',
               style: Theme.of(context).textTheme.bodySmall),

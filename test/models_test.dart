@@ -4,6 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:my_bus_app/models/models.dart';
 
 void main() {
+  test('stationNameHorizontal: 竖排括号转横排并收紧空格', () {
+    expect(stationNameHorizontal('洋仕村口 ︵ 市中医院东 ︶'), '洋仕村口（市中医院东）');
+    expect(stationNameHorizontal('泉州少林寺 ︵ 演武堂 ︶ '), '泉州少林寺（演武堂）');
+    expect(stationNameHorizontal('田洋村'), '田洋村');
+  });
+
   test('parseArrival: 即将到站', () {
     final a = parseArrival(nearText: '即将到站', nearDis: '小于1分钟/220米', nearTime: '', nearNum: 0);
     expect(a.state, ArrivalState.arriving);

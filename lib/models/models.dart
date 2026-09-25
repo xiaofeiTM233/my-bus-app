@@ -3,6 +3,17 @@ library;
 
 String _s(dynamic v) => v == null ? '' : v.toString();
 
+/// 厂商站名里的别名括号是竖排形式（︵︶，为原版竖排站牌准备）。
+/// 横排文本显示时替换为普通括号并去掉多余空格；仅用于显示，请求仍用原始名。
+String stationNameHorizontal(String name) => name
+    .replaceAll('︵', '（')
+    .replaceAll('︶', '）')
+    .replaceAll('（ ', '（')
+    .replaceAll(' ）', '）')
+    .replaceAll(' （', '（')
+    .replaceAll('  ', ' ')
+    .trim();
+
 double? _d(dynamic v) => double.tryParse(_s(v));
 
 int? _i(dynamic v) => int.tryParse(_s(v));

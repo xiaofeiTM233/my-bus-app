@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
 import '../widgets/city_bar.dart';
+import '../widgets/map_banner.dart';
 import '../widgets/station_tabs.dart';
 import 'city_picker_page.dart';
 import 'map_page.dart';
@@ -56,6 +57,8 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Column(
           children: [
+            if (app.mapAlwaysOn)
+              MapBanner(height: 170),
             CityBar(
               city: app.city,
               onPickCity: _pickCity,

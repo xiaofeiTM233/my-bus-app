@@ -44,6 +44,7 @@ class LineMapWidget extends StatelessWidget {
               'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
           subdomains: const ['1', '2', '3', '4'],
           userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
+          errorTileCallback: (tile, error, stack) {},
         ),
         if (track.length > 1)
           PolylineLayer(polylines: [
@@ -79,7 +80,7 @@ class LineMapWidget extends StatelessWidget {
               Marker(
                 point: LatLng(b.lat, b.lng),
                 width: 74,
-                height: 30,
+                height: 48,
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Transform.rotate(
                     angle: b.angle * math.pi / 180,
