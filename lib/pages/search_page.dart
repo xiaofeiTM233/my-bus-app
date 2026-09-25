@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../api/mybus_client.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
@@ -23,12 +25,14 @@ class _SearchPageState extends State<SearchPage> {
   bool _loading = false;
   bool _running = false; // 已有一个搜索在执行/排队
   String? _queuedKw; // 排队中的最新关键词（永远只保留一个）
+  CancelToken? _searchToken; // 在途搜索的取消令牌（新搜索取消旧请求）
   String? _error;
   List<LineSummary>? _lines;
   List<StationHit>? _stations;
 
   @override
   void dispose() {
+    _searchToken?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -73,20 +77,23 @@ class _SearchPageState extends State<SearchPage> {
   Future<void> _search(String kw, int seq) async {
     final app = context.read<AppState>();
     setState(() => _loading = true);
+    _searchToken?.cancel(); // 新搜索直接取消在途旧请求
+    final token = CancelToken();
+    _searchToken = token;
     try {
       if (_mode == 0) {
-        final r = await app.client.searchLine(app.city, kw);
+        final r = await app.client.searchLine(app.city, kw, cancelToken: token);
         if (seq != _seq || !mounted) return;
         _lines = r;
         _stations = null;
       } else {
-        final r = await app.client.searchStation(app.city, kw);
+        final r = await app.client.searchStation(app.city, kw, cancelToken: token);
         if (seq != _seq || !mounted) return;
         _stations = r;
         _lines = null;
       }
-    } catch (e) {
-      if (seq != _seq || !mounted) return;
+    } on MyBusException catch (e) {
+      if (e.cancelled || seq != _seq || !mounted) return; // 取消/过期静默
       _error = e.toString();
       showError(context, e);
     } finally {

@@ -37,7 +37,7 @@ dependencies:
   provider: ^6.1.2
   flutter_localizations:
     sdk: flutter
-  http: ^1.2.2
+  dio: ^5.11.1
   shared_preferences: ^2.3.4
   flutter_map: ^8.2.1
   latlong2: ^0.9.1

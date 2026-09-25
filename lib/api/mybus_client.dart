@@ -3,12 +3,12 @@ library;
 
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 import '../models/models.dart';
 
 class MyBusException implements Exception {
-  /// "-2"=城市不在服务范围；"98"=风控拦截（响应非 JSON）；"99"=网络错误。
+  /// "-2"=城市不在服务范围；"97"=请求已取消；"98"=风控拦截（响应非 JSON）；"99"=网络错误。
   final String status;
   final String msg;
   MyBusException(this.status, this.msg);
@@ -16,6 +16,7 @@ class MyBusException implements Exception {
 
   bool get cityUnsupported => status == '-2';
   bool get blocked => status == '98';
+  bool get cancelled => status == '97';
 
   @override
   String toString() => 'MyBusException($status, $msg)';
@@ -25,22 +26,39 @@ class MyBusClient {
   static const api = 'https://h5.mygolbs.com/ApiData.do';
   static const origin = 'https://h5.mygolbs.com';
 
-  final http.Client _http;
+  final Dio _dio;
   final Map<String, LineDetail> _lineCache = {};
 
-  MyBusClient({http.Client? client}) : _http = client ?? http.Client();
+  MyBusClient({Dio? dio}) : _dio = dio ?? _createDio();
 
-  Future<dynamic> _post(Map<String, String> params) async {
-    http.Response r;
+  static Dio _createDio() => Dio(BaseOptions(
+        headers: {'Origin': origin}, // 接口风控只认此 Origin，缺失时返回加密垃圾
+        contentType: 'application/x-www-form-urlencoded',
+        responseType: ResponseType.bytes, // 手动 utf8 解码，防 latin1 默认
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+      ));
+
+  Future<dynamic> _post(Map<String, String> params, {CancelToken? cancelToken}) async {
+    Response<List<int>> r;
     try {
-      r = await _http.post(Uri.parse(api), body: params, headers: {'Origin': origin});
-    } catch (e) {
-      throw MyBusException.network('网络请求失败: $e');
+      r = await _dio.post<List<int>>(api, data: params, cancelToken: cancelToken);
+    } on DioException catch (e) {
+      switch (e.type) {
+        case DioExceptionType.cancel:
+          throw MyBusException('97', '请求已取消');
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          throw MyBusException.network('请求超时');
+        default:
+          throw MyBusException.network('网络请求失败: ${e.message ?? e.type.name}');
+      }
     }
     if (r.statusCode != 200) {
       throw MyBusException.network('HTTP ${r.statusCode}');
     }
-    final body = utf8.decode(r.bodyBytes);
+    final body = utf8.decode(r.data ?? const []);
     dynamic d;
     try {
       d = jsonDecode(body);
@@ -72,18 +90,23 @@ class MyBusClient {
   }
 
   /// CMD 110：站点模糊搜索。
-  Future<List<StationHit>> searchStation(String city, String keyword) async {
-    final d = await _post(_base(city)..addAll({'CMD': '110', 'KEYWORD': keyword}));
+  Future<List<StationHit>> searchStation(String city, String keyword,
+      {CancelToken? cancelToken}) async {
+    final d = await _post(_base(city)..addAll({'CMD': '110', 'KEYWORD': keyword}),
+        cancelToken: cancelToken);
     return [for (final e in (d['busstations'] as List?) ?? []) StationHit.fromJson(e)];
   }
 
   /// CMD 114：线路搜索。部分城市必须带「路」字，空结果自动补「路」重试。
-  Future<List<LineSummary>> searchLine(String city, String keyword) async {
+  Future<List<LineSummary>> searchLine(String city, String keyword,
+      {CancelToken? cancelToken}) async {
     final kw = keyword.trim();
-    var d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': kw}));
+    var d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': kw}),
+        cancelToken: cancelToken);
     var lines = [for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e)];
     if (lines.isEmpty && !kw.endsWith('路')) {
-      d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': '$kw路'}));
+      d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': '$kw路'}),
+          cancelToken: cancelToken);
       lines = [for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e)];
     }
     return lines;
@@ -99,6 +122,25 @@ class MyBusClient {
     final detail = LineDetail.fromJson(d);
     _lineCache[key] = detail;
     return detail;
+  }
+
+  /// 城市中心估算（无需定位权限）：搜「1」取任一城市线路，站点坐标求质心。
+  /// 失败（城市无数据/网络异常）返回 null。
+  Future<(double, double)?> cityCenterGuess(String city) async {
+    try {
+      final lines = await searchLine(city, '1');
+      if (lines.isEmpty) return null;
+      final l = lines.first;
+      final dir = l.upperOrDown.isEmpty ? '1' : l.upperOrDown;
+      final d = await lineStations(city, l.lineName, dir);
+      final pts = d.stations.where((s) => s.lat != 0 && s.lon != 0).toList();
+      if (pts.isEmpty) return null;
+      final lat = pts.map((s) => s.lat).reduce((a, b) => a + b) / pts.length;
+      final lng = pts.map((s) => s.lon).reduce((a, b) => a + b) / pts.length;
+      return (lat, lng);
+    } on MyBusException {
+      return null;
+    }
   }
 
   /// CMD 115：站点各线路实时到站。[lat]/[lng] 用于同名站消歧。

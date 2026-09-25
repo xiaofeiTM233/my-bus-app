@@ -11,6 +11,7 @@ import '../utils/ui.dart';
 import 'station_board_page.dart';
 
 /// 地图页：高德栅格瓦片（GCJ-02，无 key）+ 我的位置 + 附近站点。
+/// 未授权定位时自动落到所选城市市区（接口站点质心估算）。
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
 
@@ -22,7 +23,72 @@ class _MapPageState extends State<MapPage> {
   LatLng? _me;
   List<NearbyStation>? _nearby;
   bool _locating = false;
-  String _hint = '点右下角按钮授权定位，查看附近站点';
+  bool _cityCenterUsed = false;
+  String _hint = '';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _initCenter());
+  }
+
+  /// 定位优先级: 已授权 → 真实定位; 未授权 → 城市中心估算(免权限)。
+  Future<void> _initCenter() async {
+    final app = context.read<AppState>();
+    if (!app.ready) {
+      _hint = '请先在首页选择城市';
+      setState(() {});
+      return;
+    }
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
+      await _locate();
+      return;
+    }
+    // 未授权: 用城市中心估算(结果会缓存, 每城市只算一次)
+    final c = await app.client.cityCenterGuess(app.city);
+    if (!mounted) return;
+    if (c != null) {
+      _me = LatLng(c.$1, c.$2);
+      _cityCenterUsed = true;
+      _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
+    } else {
+      _hint = '未能确定${app.city}市区位置，请授权定位';
+    }
+    setState(() {});
+  }
+
+  Future<void> _locate() async {
+    final app = context.read<AppState>();
+    if (!app.ready) {
+      _hint = '请先在首页选择城市';
+      setState(() {});
+      return;
+    }
+    setState(() => _locating = true);
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) {
+        throw '定位权限被拒绝';
+      }
+      final pos = await Geolocator.getCurrentPosition();
+      final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
+      _me = LatLng(gLat, gLng);
+      _cityCenterUsed = false;
+      _nearby = await app.client.nearby(app.city, gLat, gLng);
+      _hint = '';
+      await app.setLastLocation(gLat, gLng);
+    } catch (e) {
+      _hint = e.toString();
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +100,7 @@ class _MapPageState extends State<MapPage> {
           FlutterMap(
             options: MapOptions(
               initialCenter: _me ?? const LatLng(24.91, 118.58),
-              initialZoom: _me == null ? 11 : 15,
+              initialZoom: _me == null ? 11 : 14,
             ),
             children: [
               TileLayer(
@@ -47,7 +113,7 @@ class _MapPageState extends State<MapPage> {
               MarkerLayer(markers: _markers(context)),
             ],
           ),
-          if (_nearby == null)
+          if (_nearby == null || _cityCenterUsed)
             Positioned(
               left: 12,
               right: 12,
@@ -127,35 +193,5 @@ class _MapPageState extends State<MapPage> {
       ));
     }
     return markers;
-  }
-
-  Future<void> _locate() async {
-    final app = context.read<AppState>();
-    if (!app.ready) {
-      _hint = '请先在首页选择城市';
-      setState(() {});
-      return;
-    }
-    setState(() => _locating = true);
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        throw '定位权限被拒绝';
-      }
-      final pos = await Geolocator.getCurrentPosition();
-      final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
-      _me = LatLng(gLat, gLng);
-      _nearby = await app.client.nearby(app.city, gLat, gLng);
-      _hint = '';
-    } catch (e) {
-      _hint = e.toString();
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
   }
 }

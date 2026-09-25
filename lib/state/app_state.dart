@@ -65,8 +65,11 @@ class AppState extends ChangeNotifier {
   bool citiesLoaded = false;
   int refreshSeconds = 10; // 自动刷新间隔（≥6）
   bool mapAlwaysOn = false; // 首页顶部常驻地图
+  double? lastLat; // 最近一次真实定位（GCJ-02，持久化）
+  double? lastLng;
   List<SavedItem> favorites = [];
   List<SavedItem> history = [];
+  final Map<String, List<double>> _cityCenters = {};
 
   SharedPreferences? _prefs;
 
@@ -76,6 +79,17 @@ class AppState extends ChangeNotifier {
     city = p.getString('city') ?? '';
     refreshSeconds = p.getInt('refreshSeconds') ?? 10;
     mapAlwaysOn = p.getBool('mapAlwaysOn') ?? false;
+    lastLat = p.getDouble('lastLat');
+    lastLng = p.getDouble('lastLng');
+    final cc = p.getString('cityCenters');
+    if (cc != null) {
+      try {
+        (jsonDecode(cc) as Map).forEach((k, v) {
+          final arr = (v as List).map((e) => (e as num).toDouble()).toList();
+          if (arr.length == 2) _cityCenters[k.toString()] = arr;
+        });
+      } catch (_) {}
+    }
     favorites = _decodeList(p.getString('favorites'));
     history = _decodeList(p.getString('history'));
     notifyListeners();
@@ -112,6 +126,20 @@ class AppState extends ChangeNotifier {
     city = name;
     await _prefs?.setString('city', name);
     notifyListeners();
+  }
+
+  List<double>? cachedCityCenter(String city) => _cityCenters[city];
+
+  void cacheCityCenter(String city, double lat, double lng) {
+    _cityCenters[city] = [lat, lng];
+    _prefs?.setString('cityCenters', jsonEncode(_cityCenters));
+  }
+
+  Future<void> setLastLocation(double lat, double lng) async {
+    lastLat = lat;
+    lastLng = lng;
+    await _prefs?.setDouble('lastLat', lat);
+    await _prefs?.setDouble('lastLng', lng);
   }
 
   Future<void> setMapAlwaysOn(bool v) async {

@@ -37,8 +37,19 @@ class _MapBannerState extends State<MapBanner> {
     final perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
       await _locate();
+      return;
+    }
+    // 无权限: 落到缓存的市中心估算, 保证地图显示所选城市
+    final c = app.cachedCityCenter(app.city) ?? _lastKnown();
+    if (c != null) {
+      setState(() => _me = LatLng(c[0], c[1]));
     }
   }
+
+  List<double>? _lastKnown() =>
+      (app.lastLat != null && app.lastLng != null) ? [app.lastLat!, app.lastLng!] : null;
+
+  AppState get app => context.read<AppState>();
 
   Future<void> _locate() async {
     final app = context.read<AppState>();
@@ -57,6 +68,7 @@ class _MapBannerState extends State<MapBanner> {
       final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
       _me = LatLng(gLat, gLng);
       _nearby = await app.client.nearby(app.city, gLat, gLng);
+      app.setLastLocation(gLat, gLng);
     } catch (_) {
       // 常驻地图是锦上添花，失败静默，不打扰首页
     } finally {

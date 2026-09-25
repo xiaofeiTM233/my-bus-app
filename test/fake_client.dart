@@ -1,12 +1,14 @@
 /// 测试用假客户端：即时返回固定数据，无网络。
 library;
 
+import 'package:dio/dio.dart';
 import 'package:my_bus_app/api/mybus_client.dart';
 import 'package:my_bus_app/models/models.dart';
 
 class FakeClient implements MyBusClient {
   @override
-  Future<List<LineSummary>> searchLine(String city, String keyword) async => [
+  Future<List<LineSummary>> searchLine(String city, String keyword,
+      {CancelToken? cancelToken}) async => [
         LineSummary(
             lineName: '1路', upperOrDown: '1', from: '长冲铺', to: '兴义粮油市场', company: ''),
         LineSummary(
@@ -68,7 +70,8 @@ class FakeClient implements MyBusClient {
           ]);
 
   @override
-  Future<List<StationHit>> searchStation(String city, String keyword) async => [
+  Future<List<StationHit>> searchStation(String city, String keyword,
+      {CancelToken? cancelToken}) async => [
         StationHit(stationName: '火车站', sameNameNum: 2),
         StationHit(stationName: '街洞火车站', sameNameNum: 0),
       ];

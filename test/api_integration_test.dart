@@ -40,6 +40,11 @@ void main() {
       print('  预测 ${p.busNumber} ${p.tips} ${p.timeTips} ${p.distTips}');
     }
 
+    // 3.5 城市中心估算(免定位权限)
+    final c = await client.cityCenterGuess('郴州市');
+    print('cityCenterGuess 郴州市: $c');
+    expect(c, isNotNull, reason: '郴州应有城市中心估算');
+
     // 4. 站点实时（同 StationBoardPage）
     final stationLines = await client.stationLines('郴州市', '火车站');
     print('火车站线路: ${stationLines.length} 条');
