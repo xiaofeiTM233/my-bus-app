@@ -1,8 +1,7 @@
-/// 掌上公交接口客户端（h5.mygolbs.com，语义与限速规则见 docs/API.md）。
+/// 掌上公交接口客户端（h5.mygolbs.com，字段语义见 docs/API.md）。
 library;
 
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -27,24 +26,11 @@ class MyBusClient {
   static const origin = 'https://h5.mygolbs.com';
 
   final http.Client _http;
-  final Duration minInterval;
   final Map<String, LineDetail> _lineCache = {};
-  DateTime _lastAt = DateTime.fromMillisecondsSinceEpoch(0);
-  final Random _rng = Random();
 
-  MyBusClient({http.Client? client, this.minInterval = const Duration(seconds: 5)})
-      : _http = client ?? http.Client();
-
-  /// 全局限速：相邻请求间隔 ≥ minInterval + 0~300ms 抖动。
-  Future<void> _throttle() async {
-    final wait =
-        minInterval + Duration(milliseconds: _rng.nextInt(300)) - DateTime.now().difference(_lastAt);
-    if (wait > Duration.zero) await Future<void>.delayed(wait);
-    _lastAt = DateTime.now();
-  }
+  MyBusClient({http.Client? client}) : _http = client ?? http.Client();
 
   Future<dynamic> _post(Map<String, String> params) async {
-    await _throttle();
     http.Response r;
     try {
       r = await _http.post(Uri.parse(api), body: params, headers: {'Origin': origin});

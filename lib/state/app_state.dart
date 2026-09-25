@@ -80,13 +80,14 @@ class AppState extends ChangeNotifier {
   }
 
   static List<SavedItem> _decodeList(String? raw) {
-    if (raw == null || raw.isEmpty) return const [];
+    // 注意必须返回可增长列表：const [] 会让 addHistory/removeWhere 抛 UnsupportedError
+    if (raw == null || raw.isEmpty) return <SavedItem>[];
     try {
       return [
         for (final e in (jsonDecode(raw) as List)) SavedItem.fromJson(e)
       ];
     } catch (_) {
-      return const [];
+      return <SavedItem>[];
     }
   }
 

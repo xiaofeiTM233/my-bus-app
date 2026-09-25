@@ -180,15 +180,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
     );
   }
 
-  /// 相邻请求需间隔 5 秒，加载态给出明确预期，避免"点不开"的错觉。
-  Widget _loadingView() => const Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 12),
-          Text('接口限速排队中（相邻请求需间隔 5 秒）…',
-              style: TextStyle(fontSize: 13, color: Colors.grey)),
-        ]),
-      );
+  Widget _loadingView() => const Center(child: CircularProgressIndicator());
 
   Widget _headerCard(BuildContext context, LineDetail d) {
     final fl = d.firstLast.isEmpty ? null : d.firstLast.first;

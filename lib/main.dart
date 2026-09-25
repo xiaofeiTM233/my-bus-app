@@ -17,11 +17,34 @@ final GlobalKey _rootKey = GlobalKey();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  _installErrorLogging();
   final app = AppState(client: MyBusClient());
   await app.load();
   runApp(MyApp(app: app));
   final snapPath = Platform.environment['ZSGJ_SNAPSHOT_PATH'];
   if (snapPath != null) _scheduleSnapshot(snapPath);
+}
+
+/// 崩溃/未捕获异常落盘（%APPDATA%\my_bus_app\crash.log），便于事后定位。
+void _installErrorLogging() {
+  final dir = Directory(
+      '${Platform.environment['APPDATA'] ?? Directory.systemTemp.path}\\my_bus_app');
+  void write(String msg) {
+    try {
+      dir.createSync(recursive: true);
+      File('${dir.path}\\crash.log')
+          .writeAsStringSync(msg, mode: FileMode.append);
+    } catch (_) {}
+  }
+
+  FlutterError.onError = (details) {
+    write('\n[${DateTime.now()}] FLUTTER ${details.exception}\n${details.stack}\n');
+    FlutterError.presentError(details);
+  };
+  WidgetsBinding.instance.platformDispatcher.onError = (e, st) {
+    write('\n[${DateTime.now()}] UNCAUGHT $e\n$st\n');
+    return true;
+  };
 }
 
 /// 开发自检：设置 ZSGJ_SNAPSHOT_PATH 后启动，8 秒后把整页渲染导出为 PNG 并退出。
