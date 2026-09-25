@@ -7,11 +7,9 @@ import '../widgets/city_bar.dart';
 import '../widgets/map_banner.dart';
 import '../widgets/station_tabs.dart';
 import 'city_picker_page.dart';
-import 'map_page.dart';
 import 'search_page.dart';
-import 'transfer_page.dart';
 
-/// 首页：城市栏 + 宫格入口 + 站点面板（附近/最近/收藏，M1-B 接入）。
+/// 首页：城市栏 + 站点面板（附近/最近/收藏，M1-B 接入）。
 class HomePage extends StatefulWidget {
   final VoidCallback onGoMap;
   const HomePage({super.key, required this.onGoMap});
@@ -65,16 +63,6 @@ class _HomePageState extends State<HomePage> {
               onSearch: _openSearch,
               onMap: widget.onGoMap,
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  _GridCard(icon: Icons.alt_route, label: '换乘规划', onTap: _openTransfer),
-                  const SizedBox(width: 10),
-                  _GridCard(icon: Icons.map_outlined, label: '地图查车', onTap: _openMap),
-                ],
-              ),
-            ),
             const Divider(height: 1),
             const Expanded(child: StationTabs()),
           ],
@@ -91,45 +79,5 @@ class _HomePageState extends State<HomePage> {
     }
     await Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const SearchPage()));
-  }
-
-  void _openTransfer() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const TransferPage()));
-  }
-
-  void _openMap() {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const MapPage()));
-  }
-}
-
-class _GridCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _GridCard({required this.icon, required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(children: [
-            Icon(icon, color: cs.primary),
-            const SizedBox(height: 6),
-            Text(label, style: const TextStyle(fontSize: 13)),
-          ]),
-        ),
-      ),
-    );
   }
 }
