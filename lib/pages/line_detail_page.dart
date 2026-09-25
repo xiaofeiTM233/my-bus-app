@@ -42,6 +42,8 @@ class _LineDetailPageState extends State<LineDetailPage> {
   void initState() {
     super.initState();
     _dir = widget.dir;
+    // 默认站轴方向跟随设置：横向→站序条，纵向→时间轴
+    _horizontalAxis = !context.read<AppState>().verticalAxis;
     _load();
   }
 

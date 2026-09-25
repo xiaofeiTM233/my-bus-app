@@ -49,6 +49,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
   void initState() {
     super.initState();
     _name = widget.stationName;
+    _verticalAxis = context.read<AppState>().verticalAxis; // 默认站轴方向
     // 帧后执行: _loadLines 的错误路径会用到 ScaffoldMessenger(inherited),
     // initState 期间同步调用会抛 dependOnInherited 异常
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadLines());

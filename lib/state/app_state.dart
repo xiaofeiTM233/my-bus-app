@@ -33,24 +33,24 @@ class SavedItem {
   String get key => '$type|$city|$name|${dir ?? ''}';
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'city': city,
-        'name': name,
-        'dir': dir,
-        'order': order,
-        'subtitle': subtitle,
-        'at': at,
-      };
+    'type': type,
+    'city': city,
+    'name': name,
+    'dir': dir,
+    'order': order,
+    'subtitle': subtitle,
+    'at': at,
+  };
 
   factory SavedItem.fromJson(dynamic j) => SavedItem(
-        type: _s(j['type']),
-        city: _s(j['city']),
-        name: _s(j['name']),
-        dir: j['dir']?.toString(),
-        order: j['order'] == null ? null : int.tryParse(j['order'].toString()),
-        subtitle: j['subtitle']?.toString(),
-        at: j['at'] == null ? 0 : int.tryParse(j['at'].toString()) ?? 0,
-      );
+    type: _s(j['type']),
+    city: _s(j['city']),
+    name: _s(j['name']),
+    dir: j['dir']?.toString(),
+    order: j['order'] == null ? null : int.tryParse(j['order'].toString()),
+    subtitle: j['subtitle']?.toString(),
+    at: j['at'] == null ? 0 : int.tryParse(j['at'].toString()) ?? 0,
+  );
 
   static String _s(dynamic v) => v == null ? '' : v.toString();
 }
@@ -65,6 +65,7 @@ class AppState extends ChangeNotifier {
   bool citiesLoaded = false;
   int refreshSeconds = 10; // 自动刷新间隔（≥6）
   bool mapAlwaysOn = false; // 首页顶部常驻地图
+  bool verticalAxis = false; // 站轴默认方向：false=横向站序条，true=纵向站轴
   double? lastLat; // 最近一次真实定位（GCJ-02，持久化）
   double? lastLng;
   List<SavedItem> favorites = [];
@@ -79,6 +80,7 @@ class AppState extends ChangeNotifier {
     city = p.getString('city') ?? '';
     refreshSeconds = p.getInt('refreshSeconds') ?? 10;
     mapAlwaysOn = p.getBool('mapAlwaysOn') ?? false;
+    verticalAxis = p.getBool('verticalAxis') ?? false;
     lastLat = p.getDouble('lastLat');
     lastLng = p.getDouble('lastLng');
     final cc = p.getString('cityCenters');
@@ -99,17 +101,14 @@ class AppState extends ChangeNotifier {
     // 注意必须返回可增长列表：const [] 会让 addHistory/removeWhere 抛 UnsupportedError
     if (raw == null || raw.isEmpty) return <SavedItem>[];
     try {
-      return [
-        for (final e in (jsonDecode(raw) as List)) SavedItem.fromJson(e)
-      ];
+      return [for (final e in (jsonDecode(raw) as List)) SavedItem.fromJson(e)];
     } catch (_) {
       return <SavedItem>[];
     }
   }
 
   void _save(String key, List<SavedItem> items) {
-    _prefs?.setString(
-        key, jsonEncode([for (final i in items) i.toJson()]));
+    _prefs?.setString(key, jsonEncode([for (final i in items) i.toJson()]));
   }
 
   bool get ready => city.isNotEmpty;
@@ -148,6 +147,12 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setVerticalAxis(bool v) async {
+    verticalAxis = v;
+    await _prefs?.setBool('verticalAxis', v);
+    notifyListeners();
+  }
+
   Future<void> setRefreshSeconds(int v) async {
     refreshSeconds = v.clamp(6, 120);
     await _prefs?.setInt('refreshSeconds', refreshSeconds);
@@ -175,8 +180,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool isFavorite(SavedItem item) =>
-      favorites.any((e) => e.key == item.key);
+  bool isFavorite(SavedItem item) => favorites.any((e) => e.key == item.key);
 
   void toggleFavorite(SavedItem item) {
     if (isFavorite(item)) {
