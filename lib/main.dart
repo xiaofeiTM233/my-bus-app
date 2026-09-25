@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 import 'pages/home_page.dart';
@@ -52,13 +53,23 @@ void _installErrorLogging() {
 Future<void> _scheduleSnapshot(String path) async {
   await Future<void>.delayed(const Duration(seconds: 8));
   try {
+    final ctx = _rootKey.currentContext;
     final boundary =
-        _rootKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    if (boundary == null) exit(2);
+        ctx?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) {
+      File('$path.err').writeAsStringSync('boundary null, ctx=$ctx', mode: FileMode.append);
+      exit(2);
+    }
     final image = await boundary.toImage();
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    if (bytes == null) exit(2);
+    if (bytes == null) {
+      File('$path.err').writeAsStringSync('toByteData null', mode: FileMode.append);
+      exit(2);
+    }
     File(path).writeAsBytesSync(bytes.buffer.asUint8List());
+  } catch (e, st) {
+    File('$path.err').writeAsStringSync('snapshot failed: $e\n$st',
+        mode: FileMode.append);
   } finally {
     exit(0);
   }
@@ -72,17 +83,27 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider.value(
       value: app,
-      child: MaterialApp(
-        title: '掌上公交',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
-          useMaterial3: true,
-          // Windows 默认西文字体缺中文回退，观感差；桌面端固定微软雅黑
-          fontFamily: defaultTargetPlatform == TargetPlatform.windows
-              ? 'Microsoft YaHei'
-              : null,
+      child: RepaintBoundary(
+        key: _rootKey,
+        child: MaterialApp(
+          title: '掌上公交',
+          locale: const Locale('zh'),
+          supportedLocales: const [Locale('zh'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: seedColor),
+            useMaterial3: true,
+            // Windows 默认西文字体缺中文回退，观感差；桌面端固定微软雅黑
+            fontFamily: defaultTargetPlatform == TargetPlatform.windows
+                ? 'Microsoft YaHei'
+                : null,
+          ),
+          home: const RootShell(),
         ),
-        home: RepaintBoundary(key: _rootKey, child: const RootShell()),
       ),
     );
   }

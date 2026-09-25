@@ -25,6 +25,11 @@ class FlutterWindow : public Win32Window {
  private:
   // The project to run.
   flutter::DartProject project_;
+  // Intercept WM_GETOBJECT so system accessibility clients (UIA/MSAA) can
+  // not activate semantics; the accessibility bridge crashes natively inside
+  // flutter_windows.dll when the AXTree updates on window resize.
+  static WNDPROC s_original_child_wndproc_;
+  static LRESULT CALLBACK ViewSubclassProc(HWND, UINT, WPARAM, LPARAM);
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;

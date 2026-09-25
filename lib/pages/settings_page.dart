@@ -39,15 +39,17 @@ class SettingsPage extends StatelessWidget {
               ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('自动刷新间隔'),
-                subtitle: Slider(
-                  min: 6,
-                  max: 30,
-                  divisions: 12,
-                  label: '${app.refreshSeconds}秒',
-                  value: app.refreshSeconds.toDouble(),
-                  onChanged: (v) => app.setRefreshSeconds(v.round()),
+                subtitle: Wrap(
+                  spacing: 6,
+                  children: [
+                    for (final v in const [6, 10, 15, 20, 30])
+                      ChoiceChip(
+                        label: Text('$v秒'),
+                        selected: app.refreshSeconds == v,
+                        onSelected: (_) => app.setRefreshSeconds(v),
+                      ),
+                  ],
                 ),
-                trailing: Text('${app.refreshSeconds}s'),
               ),
             ]),
           ),
@@ -91,8 +93,8 @@ class SettingsPage extends StatelessWidget {
           Card(
             child: ListTile(
               leading: const Icon(Icons.info_outline),
-              title: const Text('关于 my-bus-app'),
-              subtitle: const Text('v0.1.0 · Flutter 第三方掌上公交'),
+              title: const Text('关于'),
+              subtitle: const Text('掌上公交第三方客户端 v0.1.0（Flutter）'),
             ),
           ),
         ],

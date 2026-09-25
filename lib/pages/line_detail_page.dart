@@ -252,7 +252,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
     } else if (!rt.hasRealtime) {
       stateText = '暂无实时数据${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'}';
     } else {
-      stateText = '运营中${rt.planTime.isEmpty ? '' : ' · planTime ${rt.planTime}'}';
+      stateText = '运营中${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'}';
     }
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),

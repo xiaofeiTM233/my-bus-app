@@ -1,6 +1,5 @@
-#include <flutter/dart_project.h>
+﻿#include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
-#include <windows.h>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -18,22 +17,27 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Impeller(OpenGLES) crashes inside flutter_windows.dll on window resize
+  // (0xc0000005, reproduced 100% on this machine); force Skia to avoid it.
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  // The following allows the engine to receive the command line arguments
+  // passed to the application.
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"my_bus_app", origin, size)) {
+  if (!window.Create(L"掌上公交", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
 
   ::MSG msg;
-  while (::GetMessage(&msg, nullptr, 0, 0)) {
+  while (::GetMessage(&msg, nullptr, 0, 0) > 0) {
     ::TranslateMessage(&msg);
     ::DispatchMessage(&msg);
   }

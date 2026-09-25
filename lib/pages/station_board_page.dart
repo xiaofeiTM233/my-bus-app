@@ -381,7 +381,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
         Align(
           alignment: Alignment.centerRight,
           child: Text(
-              '运营中${rt.planTime.isEmpty ? '' : ' · planTime ${rt.planTime}'} · ${rt.buses.length}辆车',
+              '运营中${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'} · ${rt.buses.length}辆车',
               style: Theme.of(context).textTheme.bodySmall),
         ),
       ],

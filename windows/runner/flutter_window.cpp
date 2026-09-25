@@ -4,6 +4,20 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
+WNDPROC FlutterWindow::s_original_child_wndproc_ = nullptr;
+
+LRESULT CALLBACK FlutterWindow::ViewSubclassProc(HWND hwnd, UINT message,
+                                                 WPARAM wparam, LPARAM lparam) {
+  if (message == WM_GETOBJECT) {
+    // Returning 0 keeps system accessibility clients (UIA/MSAA) from
+    // activating semantics; the accessibility bridge crashes natively
+    // inside flutter_windows.dll when the AXTree updates on resize.
+    return 0;
+  }
+  return CallWindowProc(s_original_child_wndproc_, hwnd, message, wparam,
+                        lparam);
+}
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
@@ -25,7 +39,11 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
-  SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  HWND flutter_view = flutter_controller_->view()->GetNativeWindow();
+  SetChildContent(flutter_view);
+  s_original_child_wndproc_ = reinterpret_cast<WNDPROC>(
+      SetWindowLongPtr(flutter_view, GWLP_WNDPROC,
+                       reinterpret_cast<LONG_PTR>(&ViewSubclassProc)));
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
