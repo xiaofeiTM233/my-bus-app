@@ -20,42 +20,75 @@ class MapPage extends StatefulWidget {
 }
 
 class _MapPageState extends State<MapPage> {
+  final _mapController = MapController();
   LatLng? _me;
   List<NearbyStation>? _nearby;
   bool _locating = false;
   bool _cityCenterUsed = false;
   String _hint = '';
+  bool _mapReady = false;
+  String _initCity = ''; // 已对准过的城市（切城市后需重新定位）
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initCenter());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCenter());
   }
 
-  /// 定位优先级: 已授权 → 真实定位; 未授权 → 城市中心估算(免权限)。
-  Future<void> _initCenter() async {
+  /// 确保地图对准当前设置城市：缓存直用，否则估算质心并缓存。
+  /// 已授权定位时优先真实定位。城市切换（IndexedStack 常驻本页）会再次触发。
+  Future<void> _ensureCenter() async {
     final app = context.read<AppState>();
-    if (!app.ready) {
-      _hint = '请先在首页选择城市';
+    if (!app.ready || app.city == _initCity) {
+      if (!app.ready) {
+        setState(() => _hint = '请先在首页选择城市');
+      }
+      return;
+    }
+    _initCity = app.city;
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        await _locate();
+        return;
+      }
+    } catch (_) {
+      // 桌面端可能无定位插件支持，落到城市中心估算
+    }
+    final cached = app.cachedCityCenter(app.city);
+    if (cached != null && cached.length == 2) {
+      if (!mounted) return;
+      _me = LatLng(cached[0], cached[1]);
+      _cityCenterUsed = true;
+      _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
+      _moveMap(_me!, 12);
       setState(() {});
       return;
     }
-    final perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
-      await _locate();
-      return;
+    setState(() => _hint = '正在定位${app.city}市区…');
+    try {
+      final c = await app.client.cityCenterGuess(app.city);
+      if (!mounted) return;
+      if (c != null) {
+        app.cacheCityCenter(app.city, c.$1, c.$2);
+        _me = LatLng(c.$1, c.$2);
+        _cityCenterUsed = true;
+        _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
+        _moveMap(_me!, 12);
+      } else {
+        _hint = '未能确定${app.city}市区位置，请授权定位';
+      }
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _hint = '城市定位失败：$e');
     }
-    // 未授权: 用城市中心估算(结果会缓存, 每城市只算一次)
-    final c = await app.client.cityCenterGuess(app.city);
-    if (!mounted) return;
-    if (c != null) {
-      _me = LatLng(c.$1, c.$2);
-      _cityCenterUsed = true;
-      _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
-    } else {
-      _hint = '未能确定${app.city}市区位置，请授权定位';
-    }
-    setState(() {});
+  }
+
+  /// 把地图相机移到 [c]。initialCenter 只在创建时生效，之后必须手动 move。
+  void _moveMap(LatLng c, double zoom) {
+    if (_mapReady) _mapController.move(c, zoom);
   }
 
   Future<void> _locate() async {
@@ -81,6 +114,7 @@ class _MapPageState extends State<MapPage> {
       _cityCenterUsed = false;
       _nearby = await app.client.nearby(app.city, gLat, gLng);
       _hint = '';
+      _moveMap(_me!, 14);
       await app.setLastLocation(gLat, gLng);
     } catch (e) {
       _hint = e.toString();
@@ -93,19 +127,29 @@ class _MapPageState extends State<MapPage> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    // IndexedStack 常驻本页：城市切换后重新对准新城市
+    if (app.city != _initCity) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ensureCenter();
+      });
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('地图')),
       body: Stack(
         children: [
           FlutterMap(
+            mapController: _mapController,
             options: MapOptions(
               initialCenter: _me ?? const LatLng(24.91, 118.58),
               initialZoom: _me == null ? 11 : 14,
+              onMapReady: () {
+                _mapReady = true;
+                if (_me != null) _mapController.move(_me!, 12);
+              },
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                urlTemplate: 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
                 subdomains: const ['1', '2', '3', '4'],
                 userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
                 errorTileCallback: (tile, error, stack) {},
@@ -121,11 +165,15 @@ class _MapPageState extends State<MapPage> {
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Row(children: [
-                    Expanded(child: Text(_hint)),
-                    FilledButton.tonal(
-                        onPressed: app.ready ? _locate : null, child: const Text('定位')),
-                  ]),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(_hint)),
+                      FilledButton.tonal(
+                        onPressed: app.ready ? _locate : null,
+                        child: const Text('定位'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -137,7 +185,8 @@ class _MapPageState extends State<MapPage> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2))
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             : const Icon(Icons.my_location),
       ),
     );
@@ -147,50 +196,64 @@ class _MapPageState extends State<MapPage> {
     final cs = Theme.of(context).colorScheme;
     final markers = <Marker>[];
     if (_me != null) {
-      markers.add(Marker(
-        point: _me!,
-        width: 18,
-        height: 18,
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.blue,
-            border: Border.all(color: Colors.white, width: 2),
+      markers.add(
+        Marker(
+          point: _me!,
+          width: 18,
+          height: 18,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
           ),
         ),
-      ));
+      );
     }
     for (final s in _nearby ?? const <NearbyStation>[]) {
-      markers.add(Marker(
-        point: LatLng(s.lat, s.lon),
-        width: 120,
-        height: 34,
-        child: GestureDetector(
-          onTap: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => StationBoardPage(
+      markers.add(
+        Marker(
+          point: LatLng(s.lat, s.lon),
+          width: 120,
+          height: 34,
+          child: GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => StationBoardPage(
                   stationName: s.name,
                   lat: _me?.latitude.toStringAsFixed(6),
-                  lng: _me?.longitude.toStringAsFixed(6)))),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: cs.primary),
-                borderRadius: BorderRadius.circular(6),
+                  lng: _me?.longitude.toStringAsFixed(6),
+                ),
               ),
-              child: Text('${s.name} ${s.dis}米',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: cs.primary),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${s.name} ${s.dis}米',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       fontSize: 10,
                       height: 1.4,
                       color: cs.primary,
-                      fontWeight: FontWeight.w600)),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Icon(Icons.place, size: 14, color: cs.primary),
+              ],
             ),
-            Icon(Icons.place, size: 14, color: cs.primary),
-          ]),
+          ),
         ),
-      ));
+      );
     }
     return markers;
   }

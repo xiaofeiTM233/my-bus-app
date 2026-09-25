@@ -31,18 +31,27 @@ class MyBusClient {
 
   MyBusClient({Dio? dio}) : _dio = dio ?? _createDio();
 
-  static Dio _createDio() => Dio(BaseOptions(
-        headers: {'Origin': origin}, // 接口风控只认此 Origin，缺失时返回加密垃圾
-        contentType: 'application/x-www-form-urlencoded',
-        responseType: ResponseType.bytes, // 手动 utf8 解码，防 latin1 默认
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(seconds: 15),
-      ));
+  static Dio _createDio() => Dio(
+    BaseOptions(
+      headers: {'Origin': origin}, // 接口风控只认此 Origin，缺失时返回加密垃圾
+      contentType: 'application/x-www-form-urlencoded',
+      responseType: ResponseType.bytes, // 手动 utf8 解码，防 latin1 默认
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 15),
+    ),
+  );
 
-  Future<dynamic> _post(Map<String, String> params, {CancelToken? cancelToken}) async {
+  Future<dynamic> _post(
+    Map<String, String> params, {
+    CancelToken? cancelToken,
+  }) async {
     Response<List<int>> r;
     try {
-      r = await _dio.post<List<int>>(api, data: params, cancelToken: cancelToken);
+      r = await _dio.post<List<int>>(
+        api,
+        data: params,
+        cancelToken: cancelToken,
+      );
     } on DioException catch (e) {
       switch (e.type) {
         case DioExceptionType.cancel:
@@ -83,42 +92,77 @@ class MyBusClient {
   }
 
   /// CMD 106：附近站点。
-  Future<List<NearbyStation>> nearby(String city, double lat, double lng) async {
-    final d = await _post(_base(city)
-      ..addAll({'CMD': '106', 'LAT': lat.toStringAsFixed(6), 'LNG': lng.toStringAsFixed(6)}));
-    return [for (final e in (d['data'] as List?) ?? []) NearbyStation.fromJson(e)];
+  Future<List<NearbyStation>> nearby(
+    String city,
+    double lat,
+    double lng,
+  ) async {
+    final d = await _post(
+      _base(city)..addAll({
+        'CMD': '106',
+        'LAT': lat.toStringAsFixed(6),
+        'LNG': lng.toStringAsFixed(6),
+      }),
+    );
+    return [
+      for (final e in (d['data'] as List?) ?? []) NearbyStation.fromJson(e),
+    ];
   }
 
   /// CMD 110：站点模糊搜索。
-  Future<List<StationHit>> searchStation(String city, String keyword,
-      {CancelToken? cancelToken}) async {
-    final d = await _post(_base(city)..addAll({'CMD': '110', 'KEYWORD': keyword}),
-        cancelToken: cancelToken);
-    return [for (final e in (d['busstations'] as List?) ?? []) StationHit.fromJson(e)];
+  Future<List<StationHit>> searchStation(
+    String city,
+    String keyword, {
+    CancelToken? cancelToken,
+  }) async {
+    final d = await _post(
+      _base(city)..addAll({'CMD': '110', 'KEYWORD': keyword}),
+      cancelToken: cancelToken,
+    );
+    return [
+      for (final e in (d['busstations'] as List?) ?? []) StationHit.fromJson(e),
+    ];
   }
 
   /// CMD 114：线路搜索。部分城市必须带「路」字，空结果自动补「路」重试。
-  Future<List<LineSummary>> searchLine(String city, String keyword,
-      {CancelToken? cancelToken}) async {
+  Future<List<LineSummary>> searchLine(
+    String city,
+    String keyword, {
+    CancelToken? cancelToken,
+  }) async {
     final kw = keyword.trim();
-    var d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': kw}),
-        cancelToken: cancelToken);
-    var lines = [for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e)];
+    var d = await _post(
+      _base(city)..addAll({'CMD': '114', 'KEYWORD': kw}),
+      cancelToken: cancelToken,
+    );
+    var lines = [
+      for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e),
+    ];
     if (lines.isEmpty && !kw.endsWith('路')) {
-      d = await _post(_base(city)..addAll({'CMD': '114', 'KEYWORD': '$kw路'}),
-          cancelToken: cancelToken);
-      lines = [for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e)];
+      d = await _post(
+        _base(city)..addAll({'CMD': '114', 'KEYWORD': '$kw路'}),
+        cancelToken: cancelToken,
+      );
+      lines = [
+        for (final e in (d['buslines'] as List?) ?? []) LineSummary.fromJson(e),
+      ];
     }
     return lines;
   }
 
   /// CMD 103：线路站点+轨迹（结果基本静态，按 城市|线路|方向 缓存）。
-  Future<LineDetail> lineStations(String city, String lineName, String dir) async {
+  Future<LineDetail> lineStations(
+    String city,
+    String lineName,
+    String dir,
+  ) async {
     final key = '$city|$lineName|$dir';
     final hit = _lineCache[key];
     if (hit != null) return hit;
-    final d = await _post(_base(city)
-      ..addAll({'CMD': '103', 'LINENAME': lineName, 'DIRECTION': dir}));
+    final d = await _post(
+      _base(city)
+        ..addAll({'CMD': '103', 'LINENAME': lineName, 'DIRECTION': dir}),
+    );
     final detail = LineDetail.fromJson(d);
     _lineCache[key] = detail;
     return detail;
@@ -138,32 +182,49 @@ class MyBusClient {
       final lat = pts.map((s) => s.lat).reduce((a, b) => a + b) / pts.length;
       final lng = pts.map((s) => s.lon).reduce((a, b) => a + b) / pts.length;
       return (lat, lng);
-    } on MyBusException {
+    } catch (_) {
+      // 城市无数据 / 网络异常 / 风控拦截，一律视为无法估算
       return null;
     }
   }
 
   /// CMD 115：站点各线路实时到站。[lat]/[lng] 用于同名站消歧。
-  Future<List<StationLine>> stationLines(String city, String stationName,
-      {String? lat, String? lng, bool all = false}) async {
-    final d = await _post(_base(city)..addAll({
-      'CMD': '115',
-      'STATIONNAME': stationName,
-      'MYLAT': lat ?? '',
-      'MYLNG': lng ?? '',
-      'ALL': all ? '1' : '0',
-    }));
-    return [for (final e in (d['data'] as List?) ?? []) StationLine.fromJson(e)];
+  Future<List<StationLine>> stationLines(
+    String city,
+    String stationName, {
+    String? lat,
+    String? lng,
+    bool all = false,
+  }) async {
+    final d = await _post(
+      _base(city)..addAll({
+        'CMD': '115',
+        'STATIONNAME': stationName,
+        'MYLAT': lat ?? '',
+        'MYLNG': lng ?? '',
+        'ALL': all ? '1' : '0',
+      }),
+    );
+    return [
+      for (final e in (d['data'] as List?) ?? []) StationLine.fromJson(e),
+    ];
   }
 
   /// CMD 104：某线路方向某站的实时车辆与到站预测。
-  Future<RealTime> realtime(String city, String lineName, String dir, int order) async {
-    final d = await _post(_base(city)..addAll({
-      'CMD': '104',
-      'LINENAME': lineName,
-      'DIRECTION': dir,
-      'STATIONORDER': '$order',
-    }));
+  Future<RealTime> realtime(
+    String city,
+    String lineName,
+    String dir,
+    int order,
+  ) async {
+    final d = await _post(
+      _base(city)..addAll({
+        'CMD': '104',
+        'LINENAME': lineName,
+        'DIRECTION': dir,
+        'STATIONORDER': '$order',
+      }),
+    );
     return RealTime.fromJson(d);
   }
 }
