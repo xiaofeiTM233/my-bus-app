@@ -44,9 +44,29 @@ class CityLocator {
     if (perm == LocationPermission.deniedForever) {
       throw '定位权限被永久拒绝，请到系统设置中开启';
     }
-    final pos = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
-    );
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      throw '定位服务未开启：手机请打开系统 GPS/位置服务；'
+          'Windows 请在「设置→隐私和安全性→位置」中允许定位';
+    }
+    Position? pos;
+    try {
+      pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+    } catch (e) {
+      // 实时定位失败（服务异常/信号弱）时退回系统缓存位置
+      try {
+        pos = await Geolocator.getLastKnownPosition();
+      } catch (_) {
+        pos = null;
+      }
+      if (pos == null) {
+        throw '定位失败：$e\n请检查定位服务与权限后重试';
+      }
+    }
     final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
     final raw = await _reverseCityName(pos.latitude, pos.longitude);
     return LocatedCity(
