@@ -1,0 +1,211 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Android APK（ubuntu runner）
+          - target: android
+            os: ubuntu-latest
+          # Web（ubuntu runner）
+          - target: web
+            os: ubuntu-latest
+          # Linux 桌面（ubuntu runner）
+          - target: linux
+            os: ubuntu-latest
+          # iOS（macos runner，未签名 ipa）
+          - target: ios
+            os: macos-latest
+          # macOS 桌面（macos runner）
+          - target: macos
+            os: macos-latest
+          # Windows 桌面（windows runner）
+          - target: windows
+            os: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Android 构建需要 JDK 17（项目使用 JavaVersion 17）
+      - name: Setup Java (Android)
+        if: matrix.target == 'android'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Pub get
+        run: flutter pub get
+
+      # ---------- Android ----------
+      - name: Build Android APK
+        if: matrix.target == 'android'
+        run: flutter build apk --release
+
+      # ---------- Web ----------
+      - name: Build Web
+        if: matrix.target == 'web'
+        run: flutter build web --release
+
+      # ---------- Linux ----------
+      - name: Install Linux build dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev zip
+
+      - name: Build Linux
+        if: matrix.target == 'linux'
+        run: flutter build linux --release
+
+      # ---------- iOS ----------
+      # 无证书环境使用 --no-codesign 构建，再打包成未签名 ipa（可用 Sideloadly/AltStore 等自签安装）
+      - name: Build iOS (no codesign)
+        if: matrix.target == 'ios'
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        if: matrix.target == 'ios'
+        run: |
+          APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -n 1)
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r my_bus_app-ios.ipa Payload
+          rm -rf Payload
+
+      # ---------- macOS ----------
+      - name: Build macOS
+        if: matrix.target == 'macos'
+        run: flutter build macos --release
+
+      - name: Package macOS app
+        if: matrix.target == 'macos'
+        run: |
+          cd build/macos/Build/Products/Release
+          ditto -c -k --sequesterRsrc --keepParent *.app my_bus_app-macos.zip
+
+      # ---------- Windows ----------
+      - name: Build Windows
+        if: matrix.target == 'windows'
+        run: flutter build windows --release
+
+      - name: Package Windows
+        if: matrix.target == 'windows'
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath my_bus_app-windows.zip
+
+      # ---------- 统一上传构建产物 ----------
+      - name: Upload artifact (android)
+        if: matrix.target == 'android'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-android
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload artifact (web)
+        if: matrix.target == 'web'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-web
+          path: build/web/
+
+      - name: Upload artifact (linux)
+        if: matrix.target == 'linux'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-linux
+          path: build/linux/x64/release/bundle/
+
+      - name: Upload artifact (ios)
+        if: matrix.target == 'ios'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-ios
+          path: my_bus_app-ios.ipa
+
+      - name: Upload artifact (macos)
+        if: matrix.target == 'macos'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-macos
+          path: build/macos/Build/Products/Release/my_bus_app-macos.zip
+
+      - name: Upload artifact (windows)
+        if: matrix.target == 'windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-windows
+          path: my_bus_app-windows.zip
+
+  release:
+    name: Create Release
+    # 仅在推送 tag 时创建 Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        # changelogithub 需要完整提交历史来对比 tag 之间的提交
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      # 整理产物命名，方便在 Release 附件中区分平台
+      - name: Rename artifacts
+        run: |
+          cd artifacts
+          mv app-release.apk my_bus_app-android.apk
+          # web / linux 为目录，压缩为 zip（zip 内为目录内容本身）
+          (cd app-web && zip -qr ../my_bus_app-web.zip .)
+          (cd app-linux && zip -qr ../my_bus_app-linux.zip .)
+          rm -rf app-web app-linux
+          ls -la
+
+      # changelogithub：根据 Conventional Commits 自动生成变更日志并创建 GitHub Release（默认草稿，需手动发布）
+      - name: Generate changelog & create release
+        run: npx changelogithub --draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 向已创建的 Release 附加各平台构建产物
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/my_bus_app-android.apk
+            artifacts/my_bus_app-ios.ipa
+            artifacts/my_bus_app-macos.zip
+            artifacts/my_bus_app-windows.zip
+            artifacts/my_bus_app-linux.zip
+            artifacts/my_bus_app-web.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
