@@ -76,7 +76,8 @@ class _StationStripState extends State<StationStrip> {
   @override
   Widget build(BuildContext context) {
     final stations = widget.detail.stations;
-    // 行驶中车辆按所在区段（index → 该站与下一站之间）分组
+    // 行驶中车辆分组：index=i → 车辆正驶向 1 基站序 i+1，位于站序 i 与 i+1 之间，
+    // 即轨道上 x = i * _colW 的边界处（下一站之前，而非之后）
     final moving = <int, List<BusInfo>>{};
     for (final b in widget.rt?.buses ?? const <BusInfo>[]) {
       if (!b.atStation) moving.putIfAbsent(b.index, () => []).add(b);
@@ -142,9 +143,10 @@ class _StationStripState extends State<StationStrip> {
                 // 各站：序号 / 节点 / 站名 / 点击区
                 for (var i = 0; i < stations.length; i++)
                   _station(i, stations[i], stations.length),
-                // 站间：白色方向箭头；有车时用车辆图标替代
+                // 站间：白色方向箭头；有车时用车辆图标替代。
+                // 边界 (j+1)*_colW（1 基站序 j+1 与 j+2 之间）上是 index=j+1 的车
                 for (var j = 0; j < stations.length - 1; j++)
-                  if ((moving[j] ?? const <BusInfo>[]).isEmpty)
+                  if ((moving[j + 1] ?? const <BusInfo>[]).isEmpty)
                     Positioned(
                       left: (j + 1) * _colW - 6,
                       top: _trackY - 7,
@@ -155,13 +157,13 @@ class _StationStripState extends State<StationStrip> {
                       ),
                     )
                   else
-                    for (var k = 0; k < moving[j]!.length; k++)
+                    for (var k = 0; k < moving[j + 1]!.length; k++)
                       Positioned(
                         left: (j + 1) * _colW - 11 + k * 22.0,
                         top: _trackY - 11,
                         child: Container(
                           key: ValueKey(
-                            'bus-${moving[j]![k].busNumber}-${moving[j]![k].index}',
+                            'bus-${moving[j + 1]![k].busNumber}-${moving[j + 1]![k].index}',
                           ),
                           width: 22,
                           height: 22,

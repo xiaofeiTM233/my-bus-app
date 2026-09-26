@@ -59,7 +59,8 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('第3站'));
+    // 站名为逐字竖排（'第\n3\n站'），按竖排文本查找
+    await tester.tap(find.text('第\n3\n站'));
     expect(tapped, 3);
   });
 }

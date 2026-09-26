@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 
 /// 纵向站点时间轴：站点行 + 站间车辆徽章。
-/// bus.index=i（0 基）→ 行驶中的车画在站点 i 与 i+1 之间；statusType=0（到站）画在站 i 行。
+/// bus.index=i（0 基）→ 行驶中的车正驶向 1 基站序 i+1，画在站序 i 与 i+1 之间
+/// （0 基行 seg=i-1）；statusType=0（到站）画在站序 index+1 行。
 class LineTimeline extends StatelessWidget {
   final LineDetail detail;
   final RealTime? rt;
@@ -28,8 +29,9 @@ class LineTimeline extends StatelessWidget {
       for (final b in rt!.buses) {
         if (b.atStation) {
           arrived.putIfAbsent(b.index, () => []).add(b);
-        } else {
-          moving.putIfAbsent(b.index, () => []).add(b);
+        } else if (b.index >= 1) {
+          // index=i 的行驶中车辆位于 1 基站序 i 与 i+1 之间 → 0 基段 seg=i-1
+          moving.putIfAbsent(b.index - 1, () => []).add(b);
         }
       }
     }

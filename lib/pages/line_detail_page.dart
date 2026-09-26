@@ -145,6 +145,17 @@ class _LineDetailPageState extends State<LineDetailPage> {
         title: Text(widget.lineName),
         actions: [
           IconButton(
+            onPressed: _selectedOrder == null ? null : _fetchRt,
+            tooltip: '手动刷新',
+            icon: _rtLoading
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+          ),
+          IconButton(
             onPressed: () => app.toggleFavorite(
               SavedItem(
                 type: 'line',

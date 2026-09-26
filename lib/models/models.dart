@@ -218,7 +218,7 @@ class RTimePrediction {
 }
 
 class BusInfo {
-  final int index; // 所在站点序号-1（0 基），车辆位于 index→index+1 区间
+  final int index; // 下一到站站序-1（0 基）：行驶中位于 1 基站序 index 与 index+1 之间；到站时 index+1=所在站序
   final String busNumber;
   final String statusType; // "0"=到站 "2"=行驶中
   final String stationName;
