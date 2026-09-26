@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
-import '../utils/geo.dart';
-import '../utils/ui.dart';
+import '../state/map_store.dart';
 import 'station_board_page.dart';
 
 /// 地图页：高德栅格瓦片（GCJ-02，无 key）+ 我的位置 + 附近站点。
+/// 与首页常驻小地图共享 MapStore（位置/站点/相机），同一张图。
 /// 未授权定位时自动落到所选城市市区（接口站点质心估算）。
 class MapPage extends StatefulWidget {
   const MapPage({super.key});
@@ -21,116 +20,50 @@ class MapPage extends StatefulWidget {
 
 class _MapPageState extends State<MapPage> {
   final _mapController = MapController();
-  LatLng? _me;
-  List<NearbyStation>? _nearby;
-  bool _locating = false;
-  bool _cityCenterUsed = false;
-  String _hint = '';
   bool _mapReady = false;
-  String _initCity = ''; // 已对准过的城市（切城市后需重新定位）
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCenter());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCity());
   }
 
-  /// 确保地图对准当前设置城市：缓存直用，否则估算质心并缓存。
-  /// 已授权定位时优先真实定位。城市切换（IndexedStack 常驻本页）会再次触发。
-  Future<void> _ensureCenter() async {
+  void _ensureCity() {
     final app = context.read<AppState>();
-    if (!app.ready || app.city == _initCity) {
-      if (!app.ready) {
-        setState(() => _hint = '请先在首页选择城市');
-      }
-      return;
-    }
-    _initCity = app.city;
-    try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.whileInUse ||
-          perm == LocationPermission.always) {
-        await _locate();
-        return;
-      }
-    } catch (_) {
-      // 桌面端可能无定位插件支持，落到城市中心估算
-    }
-    final cached = app.cachedCityCenter(app.city);
-    if (cached != null && cached.length == 2) {
-      if (!mounted) return;
-      _me = LatLng(cached[0], cached[1]);
-      _cityCenterUsed = true;
-      _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
-      _moveMap(_me!, 12);
-      setState(() {});
-      return;
-    }
-    setState(() => _hint = '正在定位${app.city}市区…');
-    try {
-      final c = await app.client.cityCenterGuess(app.city);
-      if (!mounted) return;
-      if (c != null) {
-        app.cacheCityCenter(app.city, c.$1, c.$2);
-        _me = LatLng(c.$1, c.$2);
-        _cityCenterUsed = true;
-        _hint = '未授权定位，已显示${app.city}市区；点右下角按钮授权后可查附近站点';
-        _moveMap(_me!, 12);
-      } else {
-        _hint = '未能确定${app.city}市区位置，请授权定位';
-      }
-      setState(() {});
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _hint = '城市定位失败：$e');
-    }
+    if (!app.ready) return;
+    context.read<MapStore>().ensureCity(app, silent: false);
   }
 
-  /// 把地图相机移到 [c]。initialCenter 只在创建时生效，之后必须手动 move。
-  void _moveMap(LatLng c, double zoom) {
-    if (_mapReady) _mapController.move(c, zoom);
-  }
-
-  Future<void> _locate() async {
-    final app = context.read<AppState>();
-    if (!app.ready) {
-      _hint = '请先在首页选择城市';
-      setState(() {});
-      return;
-    }
-    setState(() => _locating = true);
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        throw '定位权限被拒绝';
-      }
-      final pos = await Geolocator.getCurrentPosition();
-      final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
-      _me = LatLng(gLat, gLng);
-      _cityCenterUsed = false;
-      _nearby = await app.client.nearby(app.city, gLat, gLng);
-      _hint = '';
-      _moveMap(_me!, 14);
-      await app.setLastLocation(gLat, gLng);
-    } catch (e) {
-      _hint = e.toString();
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _locating = false);
+  /// 相机同步：共享相机与本图偏差明显时对齐（另一张地图拖动后）。
+  void _syncCamera() {
+    if (!_mapReady) return;
+    final store = context.read<MapStore>();
+    final c = store.camCenter;
+    if (c == null) return;
+    final cam = _mapController.camera;
+    if ((cam.center.latitude - c.latitude).abs() > 1e-9 ||
+        (cam.center.longitude - c.longitude).abs() > 1e-9 ||
+        (cam.zoom - store.camZoom).abs() > 1e-9) {
+      _mapController.move(c, store.camZoom);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final store = context.watch<MapStore>();
     // IndexedStack 常驻本页：城市切换后重新对准新城市
-    if (app.city != _initCity) {
+    if (app.ready && app.city != store.locatedCity) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _ensureCenter();
+        if (mounted) _ensureCity();
+      });
+    }
+    if (_mapReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncCamera());
+    }
+    if (!app.ready && store.hint.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.read<MapStore>().showHint('请先在首页选择城市');
       });
     }
     return Scaffold(
@@ -140,11 +73,17 @@ class _MapPageState extends State<MapPage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _me ?? const LatLng(24.91, 118.58),
-              initialZoom: _me == null ? 11 : 14,
+              initialCenter: store.camCenter ?? MapStore.defaultCenter,
+              initialZoom: store.camZoom,
               onMapReady: () {
                 _mapReady = true;
-                if (_me != null) _mapController.move(_me!, 12);
+                _syncCamera();
+              },
+              onPositionChanged: (pos, hasGesture) {
+                // 本图手势 → 记入共享相机（不 notify，对侧地图稍后对齐）
+                if (hasGesture && pos.center != null) {
+                  store.reportCamera(pos.center!, pos.zoom!);
+                }
               },
             ),
             children: [
@@ -154,10 +93,10 @@ class _MapPageState extends State<MapPage> {
                 userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
                 errorTileCallback: (tile, error, stack) {},
               ),
-              MarkerLayer(markers: _markers(context)),
+              MarkerLayer(markers: _markers(context, store)),
             ],
           ),
-          if (_nearby == null || _cityCenterUsed)
+          if (store.hint.isNotEmpty)
             Positioned(
               left: 12,
               right: 12,
@@ -167,9 +106,10 @@ class _MapPageState extends State<MapPage> {
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
-                      Expanded(child: Text(_hint)),
+                      Expanded(child: Text(store.hint)),
                       FilledButton.tonal(
-                        onPressed: app.ready ? _locate : null,
+                        onPressed:
+                            app.ready ? () => context.read<MapStore>().locate(app) : null,
                         child: const Text('定位'),
                       ),
                     ],
@@ -180,8 +120,8 @@ class _MapPageState extends State<MapPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: app.ready ? _locate : null,
-        child: _locating
+        onPressed: app.ready ? () => context.read<MapStore>().locate(app) : null,
+        child: store.locating
             ? const SizedBox(
                 width: 20,
                 height: 20,
@@ -192,13 +132,13 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  List<Marker> _markers(BuildContext context) {
+  List<Marker> _markers(BuildContext context, MapStore store) {
     final cs = Theme.of(context).colorScheme;
     final markers = <Marker>[];
-    if (_me != null) {
+    if (store.me != null) {
       markers.add(
         Marker(
-          point: _me!,
+          point: store.me!,
           width: 18,
           height: 18,
           child: Container(
@@ -211,7 +151,7 @@ class _MapPageState extends State<MapPage> {
         ),
       );
     }
-    for (final s in _nearby ?? const <NearbyStation>[]) {
+    for (final s in store.nearby ?? const <NearbyStation>[]) {
       markers.add(
         Marker(
           point: LatLng(s.lat, s.lon),
@@ -222,8 +162,8 @@ class _MapPageState extends State<MapPage> {
               MaterialPageRoute(
                 builder: (_) => StationBoardPage(
                   stationName: s.name,
-                  lat: _me?.latitude.toStringAsFixed(6),
-                  lng: _me?.longitude.toStringAsFixed(6),
+                  lat: store.me?.latitude.toStringAsFixed(6),
+                  lng: store.me?.longitude.toStringAsFixed(6),
                 ),
               ),
             ),

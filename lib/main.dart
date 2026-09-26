@@ -8,6 +8,7 @@ import 'pages/home_page.dart';
 import 'pages/map_page.dart';
 import 'pages/settings_page.dart';
 import 'state/app_state.dart';
+import 'state/map_store.dart';
 import 'api/mybus_client.dart';
 import 'platform_compat.dart';
 
@@ -43,8 +44,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: app,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: app),
+        // 常驻小地图与地图页共享的地图状态（同一张图）
+        ChangeNotifierProvider(create: (_) => MapStore()),
+      ],
       child: RepaintBoundary(
         key: rootKey,
         child: MaterialApp(

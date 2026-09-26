@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
-import '../state/app_state.dart';
-import '../utils/geo.dart';
 import '../pages/station_board_page.dart';
+import '../state/app_state.dart';
+import '../state/map_store.dart';
 
-/// 首页顶部常驻地图（设置里开启）：我的位置 + 附近站点，点站点直达站牌页。
+/// 首页顶部常驻地图（设置里开启）。
+/// 与地图页共享 MapStore（位置/站点/相机），切到全屏地图是同一张图。
 /// 仅在定位权限已授予时自动定位，不主动弹权限框。
 class MapBanner extends StatefulWidget {
   final double height;
@@ -21,92 +21,32 @@ class MapBanner extends StatefulWidget {
 
 class _MapBannerState extends State<MapBanner> {
   final _mapController = MapController();
-  LatLng? _me;
-  List<NearbyStation>? _nearby;
-  bool _locating = false;
   bool _mapReady = false;
-  String _initCity = ''; // 已对准过的城市（切城市后重新定位）
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _autoLocate());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureCity());
   }
 
-  /// 确保地图对准当前城市：已授权→真实定位；否则城市中心（缓存→估算）。
-  /// initialCenter 只在地图创建时生效，之后必须用 MapController.move。
-  Future<void> _autoLocate() async {
-    if (_locating) return;
+  void _ensureCity() {
     final app = context.read<AppState>();
-    if (!app.ready) return;
-    final changed = app.city != _initCity;
-    if (!changed && _me != null) return;
-    _initCity = app.city;
-    _nearby = null;
-    try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.whileInUse ||
-          perm == LocationPermission.always) {
-        await _locate();
-        return;
-      }
-    } catch (_) {
-      // 桌面端无定位支持时落到城市中心
-    }
-    // 无权限：缓存命中直用，否则估算质心（与地图页共用缓存）
-    final cached = app.cachedCityCenter(app.city);
-    if (cached != null && cached.length == 2) {
-      if (!mounted) return;
-      setState(() => _me = LatLng(cached[0], cached[1]));
-      _moveMap(_me!, 12);
-      return;
-    }
-    try {
-      final c = await app.client.cityCenterGuess(app.city);
-      if (!mounted || c == null) return;
-      app.cacheCityCenter(app.city, c.$1, c.$2);
-      setState(() => _me = LatLng(c.$1, c.$2));
-      _moveMap(_me!, 12);
-    } catch (_) {
-      // 常驻地图是锦上添花，失败静默，不打扰首页
+    if (app.ready) {
+      context.read<MapStore>().ensureCity(app, silent: true);
     }
   }
 
-  void _moveMap(LatLng c, double zoom) {
-    if (_mapReady) _mapController.move(c, zoom);
-  }
-
-  AppState get app => context.read<AppState>();
-
-  Future<void> _locate() async {
-    final app = context.read<AppState>();
-    if (!app.ready) return;
-    setState(() => _locating = true);
-    try {
-      var perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        throw '定位权限被拒绝';
-      }
-      final pos = await Geolocator.getCurrentPosition();
-      final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
-      _me = LatLng(gLat, gLng);
-      _nearby = await app.client.nearby(app.city, gLat, gLng);
-      _moveMap(_me!, 15);
-      app.setLastLocation(gLat, gLng);
-    } catch (_) {
-      // 常驻地图是锦上添花，失败静默，不打扰首页
-      // 真实定位失败也要保证地图对准所选城市
-      final cached = app.cachedCityCenter(app.city);
-      if (cached != null && cached.length == 2) {
-        _me = LatLng(cached[0], cached[1]);
-        _moveMap(_me!, 12);
-      }
-    } finally {
-      if (mounted) setState(() => _locating = false);
+  /// 相机同步：共享相机与本图偏差明显时对齐（另一张地图拖动后）。
+  void _syncCamera() {
+    if (!_mapReady) return;
+    final store = context.read<MapStore>();
+    final c = store.camCenter;
+    if (c == null) return;
+    final cam = _mapController.camera;
+    if ((cam.center.latitude - c.latitude).abs() > 1e-9 ||
+        (cam.center.longitude - c.longitude).abs() > 1e-9 ||
+        (cam.zoom - store.camZoom).abs() > 1e-9) {
+      _mapController.move(c, store.camZoom);
     }
   }
 
@@ -114,11 +54,15 @@ class _MapBannerState extends State<MapBanner> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final app = context.watch<AppState>();
+    final store = context.watch<MapStore>();
     // IndexedStack 常驻本组件：城市切换后重新对准
-    if (app.city != _initCity) {
+    if (app.ready && app.city != store.locatedCity) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _autoLocate();
+        if (mounted) _ensureCity();
       });
+    }
+    if (_mapReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncCamera());
     }
     return SizedBox(
       height: widget.height,
@@ -127,11 +71,17 @@ class _MapBannerState extends State<MapBanner> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: _me ?? const LatLng(24.91, 118.58),
-              initialZoom: _me == null ? 11 : 15,
+              initialCenter: store.camCenter ?? MapStore.defaultCenter,
+              initialZoom: store.camZoom,
               onMapReady: () {
                 _mapReady = true;
-                if (_me != null) _mapController.move(_me!, 12);
+                _syncCamera();
+              },
+              onPositionChanged: (pos, hasGesture) {
+                // 本图手势 → 记入共享相机（不 notify，对侧地图稍后对齐）
+                if (hasGesture && pos.center != null) {
+                  store.reportCamera(pos.center!, pos.zoom!);
+                }
               },
             ),
             children: [
@@ -141,7 +91,7 @@ class _MapBannerState extends State<MapBanner> {
                 userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
                 errorTileCallback: (tile, error, stack) {},
               ),
-              MarkerLayer(markers: _markers(cs)),
+              MarkerLayer(markers: _markers(cs, store)),
             ],
           ),
           Positioned(
@@ -152,8 +102,9 @@ class _MapBannerState extends State<MapBanner> {
               height: 34,
               child: FloatingActionButton(
                 heroTag: 'map-banner-locate',
-                onPressed: _locate,
-                child: _locating
+                onPressed: () =>
+                    context.read<MapStore>().locate(context.read<AppState>()),
+                child: store.locating
                     ? const SizedBox(
                         width: 16,
                         height: 16,
@@ -168,12 +119,12 @@ class _MapBannerState extends State<MapBanner> {
     );
   }
 
-  List<Marker> _markers(ColorScheme cs) {
+  List<Marker> _markers(ColorScheme cs, MapStore store) {
     final markers = <Marker>[];
-    if (_me != null) {
+    if (store.me != null) {
       markers.add(
         Marker(
-          point: _me!,
+          point: store.me!,
           width: 16,
           height: 16,
           child: Container(
@@ -186,7 +137,7 @@ class _MapBannerState extends State<MapBanner> {
         ),
       );
     }
-    for (final s in _nearby ?? const <NearbyStation>[]) {
+    for (final s in store.nearby ?? const <NearbyStation>[]) {
       markers.add(
         Marker(
           point: LatLng(s.lat, s.lon),
@@ -197,8 +148,8 @@ class _MapBannerState extends State<MapBanner> {
               MaterialPageRoute(
                 builder: (_) => StationBoardPage(
                   stationName: s.name,
-                  lat: _me?.latitude.toStringAsFixed(6),
-                  lng: _me?.longitude.toStringAsFixed(6),
+                  lat: store.me?.latitude.toStringAsFixed(6),
+                  lng: store.me?.longitude.toStringAsFixed(6),
                 ),
               ),
             ),
