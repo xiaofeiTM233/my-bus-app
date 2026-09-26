@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/mybus_client.dart';
 import '../models/models.dart';
+import '../utils/geo.dart';
 
 /// 收藏与最近共用的条目。type: 'line'（name=线路名, dir=方向, order=收藏时站序）
 /// 或 'station'（name=站名）。
@@ -128,6 +129,23 @@ class AppState extends ChangeNotifier {
   }
 
   List<double>? cachedCityCenter(String city) => _cityCenters[city];
+
+  /// 距离最近且已缓存中心的服务城市（定位逆地理失败时的兜底）。
+  /// [maxKm] 内无命中返回 null。
+  String? nearestCachedCity(double lat, double lng, {double maxKm = 80}) {
+    String? best;
+    var bestD = maxKm * 1000;
+    _cityCenters.forEach((name, c) {
+      if (c.length != 2) return;
+      if (cities.isNotEmpty && !cities.any((x) => x.name == name)) return;
+      final d = distMeters(lat, lng, c[0], c[1]);
+      if (d < bestD) {
+        bestD = d;
+        best = name;
+      }
+    });
+    return best;
+  }
 
   void cacheCityCenter(String city, double lat, double lng) {
     _cityCenters[city] = [lat, lng];

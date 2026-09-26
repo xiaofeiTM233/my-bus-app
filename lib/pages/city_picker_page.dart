@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/city_locator.dart';
+import '../utils/ui.dart';
 
-/// 选城市：CMD101 全量 565 城 + 手动输入。
+/// 选城市：CMD101 全量 565 城 + 定位识别 + 手动输入。
 class CityPickerPage extends StatefulWidget {
   const CityPickerPage({super.key});
 
@@ -14,11 +17,76 @@ class CityPickerPage extends StatefulWidget {
 class _CityPickerPageState extends State<CityPickerPage> {
   final _filter = TextEditingController();
   String _keyword = '';
+  bool _locating = false;
 
   @override
   void dispose() {
     _filter.dispose();
     super.dispose();
+  }
+
+  /// 定位选城：GPS 定位 → 逆地理识别城市名 → 与服务城市列表匹配。
+  Future<void> _locateCity() async {
+    if (_locating) return;
+    final app = context.read<AppState>();
+    setState(() => _locating = true);
+    try {
+      final loc = await CityLocator().locate();
+      await app.setLastLocation(loc.gLat, loc.gLng);
+      if (!mounted) return;
+
+      // 1) 与服务城市列表匹配（精确 → 去后缀 → 包含）
+      var matched = _matchCity(app.cities, loc.name);
+      String note;
+      if (matched != null) {
+        note = '定位到「${loc.rawName}」\n匹配服务城市：$matched';
+      } else if (loc.name.isEmpty) {
+        // 2) 兜底：按已缓存的城市中心取最近（80km 内）
+        matched = app.nearestCachedCity(loc.gLat, loc.gLng);
+        note = matched != null
+            ? '无法识别所在城市，按距离匹配最近服务城市：$matched'
+            : '定位成功，但无法识别所在城市\n请从列表选择或输入城市名';
+      } else {
+        // 3) 识别到了但不在服务列表，允许强行使用（同手动输入逻辑）
+        matched = loc.rawName;
+        note = '当前定位「${loc.rawName}」\n不在服务城市列表中，仍要使用请点「使用」';
+      }
+
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('定位选城'),
+          content: Text(note),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('使用')),
+          ],
+        ),
+      );
+      if (ok == true && mounted && matched != null) {
+        Navigator.of(context).pop(matched);
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
+
+  /// 服务城市匹配：精确命中 → 名称包含定位名（或反之）。
+  static String? _matchCity(List<City> cities, String name) {
+    if (name.isEmpty) return null;
+    for (final c in cities) {
+      if (c.name == name) return c.name;
+    }
+    for (final c in cities) {
+      if (c.name.contains(name) || name.contains(c.name)) return c.name;
+    }
+    return null;
   }
 
   @override
@@ -32,6 +100,22 @@ class _CityPickerPageState extends State<CityPickerPage> {
       appBar: AppBar(title: const Text('选择城市')),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _locating ? null : _locateCity,
+                icon: _locating
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.my_location, size: 18),
+                label: Text(_locating ? '正在定位识别城市…' : '定位选择当前城市'),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(

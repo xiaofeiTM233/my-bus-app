@@ -48,6 +48,17 @@ double _transformLng(double x, double y) {
   return ret;
 }
 
+/// 球面距离（米），haversine。
+double distMeters(double lat1, double lng1, double lat2, double lng2) {
+  const r = 6371000.0;
+  double rad(double d) => d * math.pi / 180.0;
+  final dLat = rad(lat2 - lat1);
+  final dLng = rad(lng2 - lng1);
+  final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(rad(lat1)) * math.cos(rad(lat2)) * math.sin(dLng / 2) * math.sin(dLng / 2);
+  return 2 * r * math.asin(math.sqrt(a));
+}
+
 /// 返回 (gcjLat, gcjLng)。
 (double, double) wgs2gcj(double lat, double lng) {
   final (oob, _) = _outOfChina(lat, lng);
