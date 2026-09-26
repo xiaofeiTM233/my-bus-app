@@ -1,17 +1,46 @@
-# my_bus_app
+# my-bus-app | 掌上公交
 
-A new Flutter project.
+基于 Flutter 打造的跨平台公交实时查询客户端，复刻原版掌上公交 App 的公开查询体验：查线路、看站牌、盯车辆、找附近站点、地图查车。数据直连公交厂商公开查询接口，无需登录与本地代理。
 
-## Getting Started
+## ✨ 核心特性
 
-This project is a starting point for a Flutter application.
+- 🏙️ **全量城市覆盖**：启动拉取全部 565 个服务城市，搜索过滤 + 手动输入即可切换，记忆上次城市，任意输入无需 citykey
+- 🔍 **线路 / 站点双搜索**：双 segment 搜索（CMD114 / CMD110），线路空结果自动补「路」重试，兼容各城市命名差异
+- 🚌 **线路详情实时盯车**：上下行方向切换（CMD103），首末班时间、站点数一目了然；纵向站点时间轴上实时车辆按位置分布，标注行驶 / 到站状态与「只上不下」等停靠属性；到站预测轮询（CMD104），显示车牌、剩余站数、预计时间与距离
+- 🚏 **横滑站牌**：复刻原版 RTimeActivity 样式，站序条横向滑动、当前站高亮、车辆图标分布于轨道；大字到站预测 + 后续车辆 + 计划发车时间 + 运营状态 + 在线车辆数
+- 📍 **附近站点**：geolocator 定位（WGS84→GCJ-02 本地转换）+ CMD106，列出附近站点及各线路实时到站预览，点按直达站牌
+- 🕘 **最近与收藏**：查询历史混排去重（上限 20 条）点按直达；线路（带方向）与站点（带实时预览）收藏，左滑删除
+- 🗺️ **地图查车**：flutter_map + 高德栅格瓦片（GCJ-02，零注册 key），线路轨迹 / 站点 / 实时车辆 / 我的位置分层展示，底部卡片实时摘要；支持首页顶部常驻地图
+- ⚙️ **可调刷新与限速友好**：自动刷新间隔 6–120s 可配，CMD103 线路拓扑按 (城市, 线路, 方向) 内存缓存，规避接口限速风控
+- 🌓 **崩溃可追溯**：未捕获异常自动落盘 `crash.log`，便于事后定位；桌面端支持鼠标拖拽滚动与中文字体回退
 
-A few resources to get you started if this is your first Flutter project:
+## 🛠️ 技术栈
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- **语言**: [Dart](https://dart.dev/)（Flutter SDK ^3.13.2）
+- **状态管理**: [provider](https://pub.dev/packages/provider) + `ChangeNotifier`
+- **网络**: [dio](https://pub.dev/packages/dio)
+- **地图**: [flutter_map](https://pub.dev/packages/flutter_map) + [latlong2](https://pub.dev/packages/latlong2)
+- **定位**: [geolocator](https://pub.dev/packages/geolocator) + 本地 WGS84→GCJ-02 坐标转换
+- **存储**: [shared_preferences](https://pub.dev/packages/shared_preferences)
+- **UI**: Material 3
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## ⚙️ 使用说明
+
+- **首页**：顶栏选城市 + 搜索线路或站点；中部子 Tab 切换「附近 / 最近 / 收藏」——附近需授权定位，最近自动记录查询，收藏在线路详情页点 ☆ 添加
+- **线路详情**：搜索结果点进线路，上下行切换、站点时间轴自动刷新；点站点切换该站预测，底部可切换站牌视图 / 地图视图
+- **站牌页**：从站点搜索或附近列表进入，横滑站序查看各线路到站，选线路进入实时轮询
+- **地图**：底部导航进入，查看线路轨迹与实时车辆位置，点选对象看实时摘要
+- **我的**：切换城市、调整刷新间隔（6–120s）、开关首页常驻地图、查看数据源与免责说明
+- **开发者自检**：设置环境变量 `ZSGJ_SNAPSHOT_PATH` 启动可在 8 秒后自动导出整页 PNG（引擎取帧，不经屏幕合成）
+
+## 🚀 运行
+
+```powershell
+flutter pub get
+flutter run -d windows   # 开发验证主要跑 Windows 桌面
+flutter run -d android   # Android 真机 / 模拟器
+```
+
+## 📚 说明
+
+本 README 文档由 AI 辅助生成。如有问题，请提交 Issue 或[与我联系](https://github.com/xiaofeiTM233)！
