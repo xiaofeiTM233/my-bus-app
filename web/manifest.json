@@ -1,11 +1,11 @@
 {
-    "name": "my_bus_app",
-    "short_name": "my_bus_app",
+    "name": "掌上公交",
+    "short_name": "掌上公交",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "掌上公交第三方客户端（实时公交查询）",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

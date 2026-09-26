@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
-        android:label="my_bus_app"
+        android:label="掌上公交"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
