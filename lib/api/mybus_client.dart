@@ -4,6 +4,7 @@ library;
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 import '../models/models.dart';
 
@@ -26,6 +27,18 @@ class MyBusClient {
   static const api = 'https://h5.mygolbs.com/ApiData.do';
   static const origin = 'https://h5.mygolbs.com';
 
+  /// Web 端请求端点：走同源 Edge Function 代理（api/ApiData.do.js）。
+  /// 浏览器禁止 JS 设置 Origin（受保护头），且直连时浏览器自动携带的
+  /// Origin 是本站域名，过不了接口风控（实测错误 Origin 返回加密垃圾），
+  /// 因此必须由服务端代理注入 Origin: h5.mygolbs.com。
+  /// 本地联调可用 --dart-define=WEB_API_ENDPOINT=... 指向其他代理地址。
+  static const webApi = String.fromEnvironment(
+    'WEB_API_ENDPOINT',
+    defaultValue: '/api/ApiData.do',
+  );
+
+  String get _endpoint => kIsWeb ? webApi : api;
+
   final Dio _dio;
   final Map<String, LineDetail> _lineCache = {};
 
@@ -33,7 +46,8 @@ class MyBusClient {
 
   static Dio _createDio() => Dio(
     BaseOptions(
-      headers: {'Origin': origin}, // 接口风控只认此 Origin，缺失时返回加密垃圾
+      // Web 端不设 Origin（浏览器拒绝设置受保护头），由代理端注入
+      headers: kIsWeb ? const <String, String>{} : {'Origin': origin},
       contentType: 'application/x-www-form-urlencoded',
       responseType: ResponseType.bytes, // 手动 utf8 解码，防 latin1 默认
       connectTimeout: const Duration(seconds: 15),
@@ -48,7 +62,7 @@ class MyBusClient {
     Response<List<int>> r;
     try {
       r = await _dio.post<List<int>>(
-        api,
+        _endpoint,
         data: params,
         cancelToken: cancelToken,
       );
