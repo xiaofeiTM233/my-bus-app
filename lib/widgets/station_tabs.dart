@@ -226,8 +226,10 @@ class _NearbyPanelState extends State<NearbyPanel> {
                 style: TextStyle(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w600)),
+            // 传站点自身坐标：CMD115 按 MY 坐标就近匹配站名，有效半径很小，
+            // 传用户定位（漂移/较远）会导致查不到线路
             onTap: () => _openStation(context, s.name,
-                lat: _lat?.toStringAsFixed(6), lng: _lng?.toStringAsFixed(6)),
+                lat: s.lat.toStringAsFixed(6), lng: s.lon.toStringAsFixed(6)),
           );
         },
       ),

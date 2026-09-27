@@ -70,12 +70,17 @@ class _StationBoardPageState extends State<StationBoardPage> {
       _error = null;
     });
     try {
-      final lines = await app.client.stationLines(
+      var lines = await app.client.stationLines(
         app.city,
         _name,
         lat: widget.lat,
         lng: widget.lng,
+        all: true, // ALL=1：全部经过线路；ALL=0 只返回有实时数据的一小部分
       );
+      // CMD115 按 MY 坐标就近匹配同名站，坐标偏差过大时返回空——去坐标重试
+      if (lines.isEmpty && (widget.lat != null || widget.lng != null)) {
+        lines = await app.client.stationLines(app.city, _name, all: true);
+      }
       if (!mounted) return;
       if (lines.isEmpty) {
         final cands = await app.client.searchStation(app.city, _name);

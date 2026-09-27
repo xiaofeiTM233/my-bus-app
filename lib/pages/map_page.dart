@@ -162,8 +162,9 @@ class _MapPageState extends State<MapPage> {
               MaterialPageRoute(
                 builder: (_) => StationBoardPage(
                   stationName: s.name,
-                  lat: store.me?.latitude.toStringAsFixed(6),
-                  lng: store.me?.longitude.toStringAsFixed(6),
+                  // 传站点自身坐标（CMD115 按 MY 坐标就近匹配，用户定位可能偏差过大）
+                  lat: s.lat.toStringAsFixed(6),
+                  lng: s.lon.toStringAsFixed(6),
                 ),
               ),
             ),
