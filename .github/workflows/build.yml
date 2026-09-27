@@ -176,17 +176,20 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           path: artifacts
-          merge-multiple: true
 
       # 整理产物命名，方便在 Release 附件中区分平台
       - name: Rename artifacts
         run: |
           cd artifacts
-          mv app-release.apk my_bus_app-android.apk
+          mv app-android/app-release.apk my_bus_app-android.apk
           # web / linux 为目录，压缩为 zip（zip 内为目录内容本身）
           (cd app-web && zip -qr ../my_bus_app-web.zip .)
           (cd app-linux && zip -qr ../my_bus_app-linux.zip .)
-          rm -rf app-web app-linux
+          # 单文件产物提升到根目录
+          mv app-ios/my_bus_app-ios.ipa .
+          mv app-macos/my_bus_app-macos.zip .
+          mv app-windows/my_bus_app-windows.zip .
+          rm -rf app-android app-web app-linux app-ios app-macos app-windows
           ls -la
 
       # changelogithub：根据 Conventional Commits 自动生成变更日志并创建 GitHub Release（默认草稿，需手动发布）
