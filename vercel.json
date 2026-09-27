@@ -3,6 +3,10 @@
     {
       "source": "/gstatic/:path*",
       "destination": "/api/gstatic?path=:path*"
+    },
+    {
+      "source": "/nominatim/:path*",
+      "destination": "/api/nominatim/:path*"
     }
   ]
 }

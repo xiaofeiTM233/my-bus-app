@@ -78,8 +78,17 @@ class CityLocator {
     );
   }
 
+  /// Nominatim 基址。原生端直连（可经 --dart-define=NOMINATIM_BASE 覆盖）；
+  /// Web 端走同源 /nominatim/ 代理（Vercel Edge Function / dev_proxy.py），
+  /// 规避国内直连 Nominatim 失败导致逆地理永远为空。
+  static const _nominatimBase = String.fromEnvironment(
+    'NOMINATIM_BASE',
+    defaultValue: 'https://nominatim.openstreetmap.org',
+  );
+
   /// Nominatim 逆地理（WGS-84 坐标）。任何失败返回 ''。
   Future<String> _reverseCityName(double lat, double lng) async {
+    final base = kIsWeb ? '/nominatim' : _nominatimBase;
     final dio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 8),
       receiveTimeout: const Duration(seconds: 8),
@@ -91,7 +100,7 @@ class CityLocator {
     ));
     try {
       final r = await dio.get<String>(
-        'https://nominatim.openstreetmap.org/reverse',
+        '$base/reverse',
         queryParameters: {
           'format': 'jsonv2',
           'lat': lat.toStringAsFixed(6),

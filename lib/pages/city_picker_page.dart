@@ -61,9 +61,11 @@ class _CityPickerPageState extends State<CityPickerPage> {
             TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('取消')),
-            FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('使用')),
+            // 识别失败且无兜底城市时没有可用结果，不显示「使用」
+            if (matched != null)
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('使用')),
           ],
         ),
       );
