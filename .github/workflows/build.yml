@@ -61,6 +61,27 @@ jobs:
         run: flutter pub get
 
       # ---------- Android ----------
+      # 从 Secrets 还原正式签名（未配置时构建自动回退 debug 签名）
+      - name: Restore Android signing keystore
+        if: matrix.target == 'android'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "未配置签名 Secrets，本次 APK 使用 debug 签名"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          cat > android/key.properties <<EOF
+          storeFile=release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
       - name: Build Android APK
         if: matrix.target == 'android'
         run: flutter build apk --release --dart-define=GIT_COMMIT=${{ github.sha }}

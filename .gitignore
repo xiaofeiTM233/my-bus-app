@@ -44,6 +44,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android 签名（绝不入库）
+android/key.properties
+**/*.keystore
+**/*.jks
+
 # Widget Preview related
 .widget_preview/
 
