@@ -41,6 +41,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
   RealTime? _rt;
   bool _rtLoading = false;
   bool _verticalAxis = false; // 站牌轴纵向（默认横向滑条）
+  bool _mapView = false; // 地图视图（与线路详情页一致）
   int _order = 1; // 当前查询站序（纵向时间轴里点站点可切换）
   Timer? _timer;
   String? _lastBoardKey; // 最近打开过的方向（列表里标「当前」）
@@ -349,9 +350,16 @@ class _StationBoardPageState extends State<StationBoardPage> {
     final rt = _rt;
     final cs = Theme.of(context).colorScheme;
     final axisToggle = IconButton(
-      onPressed: () => setState(() => _verticalAxis = !_verticalAxis),
+      onPressed: _mapView
+          ? null
+          : () => setState(() => _verticalAxis = !_verticalAxis),
       icon: Icon(_verticalAxis ? Icons.swap_horiz : Icons.swap_vert),
       tooltip: _verticalAxis ? '横向站牌' : '纵向站轴',
+    );
+    final mapToggle = IconButton(
+      onPressed: () => setState(() => _mapView = !_mapView),
+      icon: Icon(_mapView ? Icons.view_list : Icons.map_outlined),
+      tooltip: _mapView ? '站轴' : '地图',
     );
     final header = Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -369,6 +377,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             axisToggle,
+            mapToggle,
             if (_rtLoading)
               const SizedBox(
                 width: 16,
@@ -395,6 +404,31 @@ class _StationBoardPageState extends State<StationBoardPage> {
             ),
           )
         : null;
+
+    // 地图视图：全幅线路地图（车辆位置 + 编号站点），底部保留到站预测
+    if (_mapView) {
+      return Column(
+        children: [
+          header,
+          Expanded(
+            child: _detail == null
+                ? const Center(child: CircularProgressIndicator())
+                : LineMapWidget(
+                    detail: _detail!,
+                    rt: rt,
+                    selectedOrder: _order,
+                  ),
+          ),
+          Card(
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: _predictions(context, rt, cs),
+            ),
+          ),
+        ],
+      );
+    }
 
     if (_verticalAxis) {
       // 纵向站轴: 时间轴占满余下空间, 预测卡固定底部
