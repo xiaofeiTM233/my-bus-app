@@ -138,14 +138,16 @@ class _LineDetailPageState extends State<LineDetailPage> {
     _load();
   }
 
-  /// 双击站点 → 打开该站的站牌页（带站坐标用于同名站消歧）。
+  /// 双击站点 → 打开该站的站牌页。
+  /// 必须传规范站名（stationName）；showName 的竖排括号+空格形式
+  /// 会被 CMD115 拒绝（返回空列表）。坐标用于同名站消歧。
   Future<void> _openStationBoard(int order) async {
     final s = _detail?.stations.where((e) => e.order == order).firstOrNull;
     if (s == null || !mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => StationBoardPage(
-          stationName: s.showName,
+          stationName: s.name,
           lat: s.lat == 0 ? null : s.lat.toStringAsFixed(6),
           lng: s.lon == 0 ? null : s.lon.toStringAsFixed(6),
         ),

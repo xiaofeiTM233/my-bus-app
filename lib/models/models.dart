@@ -97,6 +97,10 @@ class FirstLast {
 }
 
 class LineStation {
+  /// 规范站名（接口 stationName 字段，用于 CMD115 等站名查询）
+  final String name;
+
+  /// 显示名（showName，可能含竖排括号与空格，仅供展示）
   final String showName;
   final int order;
   final double lat;
@@ -104,7 +108,8 @@ class LineStation {
   final int status; // 1 正常；语义见 API.md
   final int niheIndex;
   LineStation(
-      {required this.showName,
+      {required this.name,
+      required this.showName,
       required this.order,
       required this.lat,
       required this.lon,
@@ -122,14 +127,20 @@ class LineStation {
         8: '大站车停靠',
       }[status];
 
-  factory LineStation.fromJson(dynamic j) => LineStation(
-        showName: _s(j['showName']),
-        order: _i(j['stationOrder']) ?? 0,
-        lat: _d(j['station_lat']) ?? 0,
-        lon: _d(j['station_lon']) ?? 0,
-        status: _i(j['stationsStatus']) ?? 1,
-        niheIndex: _i(j['StationNihePointIndex']) ?? -1,
-      );
+  factory LineStation.fromJson(dynamic j) {
+    final show = _s(j['showName']);
+    final name = _s(j['stationName']);
+    return LineStation(
+      // 规范名缺失时回落到显示名（尽量保证 CMD115 可查）
+      name: name.isEmpty ? show : name,
+      showName: show,
+      order: _i(j['stationOrder']) ?? 0,
+      lat: _d(j['station_lat']) ?? 0,
+      lon: _d(j['station_lon']) ?? 0,
+      status: _i(j['stationsStatus']) ?? 1,
+      niheIndex: _i(j['StationNihePointIndex']) ?? -1,
+    );
+  }
 }
 
 class LineDetail {
