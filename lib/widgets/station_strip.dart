@@ -13,12 +13,14 @@ class StationStrip extends StatefulWidget {
   final RealTime? rt;
   final int currentOrder;
   final ValueChanged<int>? onStationTap;
+  final ValueChanged<int>? onStationDoubleTap; // 双击站点 → 站牌页
   const StationStrip({
     super.key,
     required this.detail,
     required this.rt,
     required this.currentOrder,
     this.onStationTap,
+    this.onStationDoubleTap,
   });
 
   @override
@@ -294,13 +296,16 @@ class _StationStripState extends State<StationStrip> {
               ),
             ),
           ),
-          // 点击区（覆盖整列，置于最上层）
+          // 点击区（覆盖整列，置于最上层）：单击选站，双击进站牌页
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
               onTap: widget.onStationTap == null
                   ? null
                   : () => widget.onStationTap!(s.order),
+              onDoubleTap: widget.onStationDoubleTap == null
+                  ? null
+                  : () => widget.onStationDoubleTap!(s.order),
             ),
           ),
         ],

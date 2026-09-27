@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
+import 'station_board_page.dart';
 import '../widgets/line_map.dart';
 import '../widgets/line_timeline.dart';
 import '../widgets/station_strip.dart';
@@ -137,6 +138,21 @@ class _LineDetailPageState extends State<LineDetailPage> {
     _load();
   }
 
+  /// 双击站点 → 打开该站的站牌页（带站坐标用于同名站消歧）。
+  Future<void> _openStationBoard(int order) async {
+    final s = _detail?.stations.where((e) => e.order == order).firstOrNull;
+    if (s == null || !mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => StationBoardPage(
+          stationName: s.showName,
+          lat: s.lat == 0 ? null : s.lat.toStringAsFixed(6),
+          lng: s.lon == 0 ? null : s.lon.toStringAsFixed(6),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -236,6 +252,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
                     rt: _rt,
                     currentOrder: _selectedOrder ?? 1,
                     onStationTap: _selectStation,
+                    onStationDoubleTap: _openStationBoard,
                   ),
                 )
               : LineTimeline(
@@ -243,6 +260,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
                   rt: _rt,
                   selectedOrder: _selectedOrder,
                   onSelectStation: _selectStation,
+                  onStationDoubleTap: _openStationBoard,
                   rtLoading: _rtLoading,
                 ),
         ),

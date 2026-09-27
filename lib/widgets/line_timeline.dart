@@ -10,6 +10,7 @@ class LineTimeline extends StatelessWidget {
   final RealTime? rt;
   final int? selectedOrder;
   final ValueChanged<int> onSelectStation;
+  final ValueChanged<int>? onStationDoubleTap; // 双击站点 → 站牌页
   final bool rtLoading;
   const LineTimeline(
       {super.key,
@@ -17,6 +18,7 @@ class LineTimeline extends StatelessWidget {
       required this.rt,
       required this.selectedOrder,
       required this.onSelectStation,
+      this.onStationDoubleTap,
       required this.rtLoading});
 
   @override
@@ -60,6 +62,9 @@ class LineTimeline extends StatelessWidget {
         final atStation = arrived[idx] ?? const <BusInfo>[];
         return InkWell(
           onTap: () => onSelectStation(s.order),
+          onDoubleTap: onStationDoubleTap == null
+              ? null
+              : () => onStationDoubleTap!(s.order),
           child: Container(
             color: selected ? cs.primaryContainer.withValues(alpha: 0.4) : null,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

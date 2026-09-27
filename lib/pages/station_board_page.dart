@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../utils/ui.dart';
+import 'line_detail_page.dart';
 import '../widgets/line_map.dart';
 import '../widgets/line_timeline.dart';
 import '../widgets/station_strip.dart';
@@ -361,7 +362,20 @@ class _StationBoardPageState extends State<StationBoardPage> {
       icon: Icon(_mapView ? Icons.view_list : Icons.map_outlined),
       tooltip: _mapView ? '站轴' : '地图',
     );
-    final header = Card(
+    final header = GestureDetector(
+      // 双击线路标题 → 打开该线路的路线页（定位到本站站序）
+      onDoubleTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => LineDetailPage(
+              lineName: l.lineName,
+              dir: l.upperOrDown,
+              initialOrder: _order,
+            ),
+          ),
+        );
+      },
+      child: Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: ListTile(
         leading: IconButton(
@@ -372,7 +386,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
           '${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
-        subtitle: Text('本站站序 $_order · 点按刷新'),
+        subtitle: Text('本站站序 $_order · 点按刷新 · 双击看全程'),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -392,6 +406,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
           ],
         ),
         onTap: () => _refreshRt(),
+      ),
       ),
     );
     final mapCard = (context.read<AppState>().mapAlwaysOn && _detail != null)
