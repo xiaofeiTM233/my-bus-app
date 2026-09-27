@@ -393,17 +393,23 @@ class _StationBoardPageState extends State<StationBoardPage> {
           children: [
             axisToggle,
             mapToggle,
-            if (_rtLoading)
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              IconButton(
-                onPressed: () => _refreshRt(),
-                icon: const Icon(Icons.refresh),
+            // 固定尺寸槽位：加载圈与刷新按钮互换时宽度不变，避免整行抖动
+            SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: _rtLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : IconButton(
+                        onPressed: () => _refreshRt(),
+                        icon: const Icon(Icons.refresh),
+                      ),
               ),
+            ),
           ],
         ),
         onTap: () => _refreshRt(),
