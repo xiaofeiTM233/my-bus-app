@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/gstatic/:path*",
+      "destination": "/api/gstatic?path=:path*"
+    }
+  ]
+}

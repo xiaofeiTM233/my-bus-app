@@ -14,6 +14,17 @@ import 'platform_compat.dart';
 
 const seedColor = Color(0xFF0A7D4F);
 
+/// 各平台本地中文字体回退（按常见程度排序，逐个尝试直到命中系统已装字体）。
+/// Web 端 CanvasKit 无法使用系统字体（走 /gstatic/ 同源代理），此列表无害。
+const _systemFontFallback = <String>[
+  'Microsoft YaHei', // Windows 微软雅黑
+  'PingFang SC', // macOS 苹方
+  'Noto Sans CJK SC', // Linux 思源黑体
+  'WenQuanYi Micro Hei', // Linux 文泉驿微米黑
+  'SimHei', // Windows 中易黑体
+  'Heiti SC', // macOS 旧版黑体
+];
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   installErrorLogging();
@@ -68,6 +79,8 @@ class MyApp extends StatelessWidget {
             fontFamily: defaultTargetPlatform == TargetPlatform.windows
                 ? 'Microsoft YaHei'
                 : null,
+            // 各平台本地黑体系字体回退：系统已装则直接用，不依赖网络字体
+            fontFamilyFallback: _systemFontFallback,
           ),
           home: const RootShell(),
         ),
