@@ -220,7 +220,7 @@ class _NearbyPanelState extends State<NearbyPanel> {
           final s = sts[i];
           return ListTile(
             leading: const Icon(Icons.place_outlined),
-            title: Text(s.name),
+            title: Text(stationNameHorizontal(s.name)),
             subtitle: s.sameNum > 0 ? Text('同名站 ${s.sameNum} 个') : null,
             trailing: Text('${s.dis}米',
                 style: TextStyle(
@@ -255,7 +255,7 @@ class RecentPanel extends StatelessWidget {
           leading: Icon(item.type == 'line'
               ? Icons.directions_bus_outlined
               : Icons.place_outlined),
-          title: Text(item.name),
+          title: Text(stationNameHorizontal(item.name)),
           subtitle: Text(
               '${item.subtitle ?? (item.type == 'line' ? (item.dir == '1' ? '上行' : '下行') : '站点')}'
               ' · ${dt.month}/${dt.day} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}'),
@@ -306,7 +306,7 @@ class FavoritesPanel extends StatelessWidget {
           onDismissed: (_) => app.removeFavorite(item),
           child: ListTile(
             leading: const Icon(Icons.directions_bus_outlined),
-            title: Text(item.name),
+            title: Text(stationNameHorizontal(item.name)),
             subtitle: Text(item.subtitle ?? (item.dir == '1' ? '上行' : '下行')),
             onTap: () => _openLine(context, item),
           ),
@@ -319,7 +319,7 @@ class FavoritesPanel extends StatelessWidget {
           onDismissed: (_) => app.removeFavorite(item),
           child: ListTile(
             leading: const Icon(Icons.place_outlined),
-            title: Text(item.name),
+            title: Text(stationNameHorizontal(item.name)),
             subtitle: item.subtitle == null ? null : Text(item.subtitle!),
             onTap: () => _openStation(context, item.name),
           ),

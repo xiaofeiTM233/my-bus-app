@@ -164,7 +164,7 @@ class _MapBannerState extends State<MapBanner> {
                     borderRadius: BorderRadius.circular(5),
                   ),
                   child: Text(
-                    '${s.name} ${s.dis}米',
+                    '${stationNameHorizontal(s.name)} ${s.dis}米',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 9,

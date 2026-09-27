@@ -178,7 +178,7 @@ class _MapPageState extends State<MapPage> {
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
-                    '${s.name} ${s.dis}米',
+                    '${stationNameHorizontal(s.name)} ${s.dis}米',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,

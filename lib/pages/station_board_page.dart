@@ -174,7 +174,8 @@ class _StationBoardPageState extends State<StationBoardPage> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_name),
+          // 显示用横排括号（︵︶ → （）），请求仍用原始名 _name
+          title: Text(stationNameHorizontal(_name)),
           actions: [
             IconButton(
               onPressed: () => app.toggleFavorite(
@@ -325,7 +326,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
         Padding(
           padding: const EdgeInsets.all(16),
           child: Text(
-            '「$_name」未精确命中，以下是候选站：',
+            '「${stationNameHorizontal(_name)}」未精确命中，以下是候选站：',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ),

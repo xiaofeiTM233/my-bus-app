@@ -219,7 +219,7 @@ class _SearchPageState extends State<SearchPage> {
         final s = _stations![i];
         return ListTile(
           leading: const Icon(Icons.place_outlined),
-          title: Text(s.stationName, style: const TextStyle(fontWeight: FontWeight.w600)),
+          title: Text(stationNameHorizontal(s.stationName), style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: s.sameNameNum > 0 ? Text('同名站 ${s.sameNameNum} 个') : null,
           trailing: const Icon(Icons.chevron_right),
           onTap: () {

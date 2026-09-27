@@ -8,11 +8,15 @@ String _s(dynamic v) => v == null ? '' : v.toString();
 String stationNameHorizontal(String name) => name
     .replaceAll('︵', '（')
     .replaceAll('︶', '）')
-    .replaceAll('（ ', '（')
-    .replaceAll(' ）', '）')
-    .replaceAll(' （', '（')
-    .replaceAll('  ', ' ')
+    .replaceAll(RegExp(r'\s*（\s*'), '（')
+    .replaceAll(RegExp(r'\s*）\s*'), '）')
+    .replaceAll(RegExp(r'\s{2,}'), ' ')
     .trim();
+
+/// 竖排显示（站序条逐字）：保留原版竖排括号 ︵︶，去掉全部空白
+///（竖排里每个空格都是一整行空白，视觉上就是多余空隙）。
+String stationNameVertical(String name) =>
+    name.replaceAll(RegExp(r'\s+'), '');
 
 double? _d(dynamic v) => double.tryParse(_s(v));
 

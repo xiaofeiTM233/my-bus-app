@@ -280,13 +280,13 @@ class _StationStripState extends State<StationStrip> {
               top: _trackY + 4,
               child: Icon(Icons.navigation, size: 13, color: _pinColor),
             ),
-          // 站名逐字竖排，当前站橙色加粗
+          // 站名逐字竖排（去空白），当前站橙色加粗
           Positioned(
             left: 4,
             right: 4,
             top: 58,
             child: Text(
-              s.showName.split('').join('\n'),
+              stationNameVertical(s.showName).split('').join('\n'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
