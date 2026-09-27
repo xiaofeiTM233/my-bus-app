@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app_info.dart';
 import '../state/app_state.dart';
 import 'city_picker_page.dart';
 
@@ -95,33 +97,32 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '数据来源说明',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('掌上公交'),
+                  subtitle: Text(
+                    'v$appVersion（Flutter）'
+                    '${commitShort.isEmpty ? '' : ' · $commitShort'}',
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '本应用为掌上公交（golbs）的第三方客户端，数据来自其公开查询接口'
-                    '（h5.mygolbs.com/ApiData.do），坐标为 GCJ-02（高德系）。\n\n'
-                    '接口有频率限制：客户端已强制相邻请求 ≥5 秒 + 随机抖动，'
-                    '线路拓扑会本地缓存。仅供个人出行查询，请勿商用或高频抓取。\n\n'
-                    '不包含登录、扫码乘车、支付等账号功能。',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('关于'),
-              subtitle: const Text('掌上公交第三方客户端 v0.1.0（Flutter）'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.code),
+                  title: const Text('GitHub 仓库'),
+                  subtitle: const Text(repoUrl),
+                  trailing: const Icon(Icons.copy, size: 18),
+                  onTap: () {
+                    Clipboard.setData(const ClipboardData(text: repoUrl));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('仓库地址已复制'),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ],

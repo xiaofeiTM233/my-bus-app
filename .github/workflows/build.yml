@@ -63,12 +63,12 @@ jobs:
       # ---------- Android ----------
       - name: Build Android APK
         if: matrix.target == 'android'
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=GIT_COMMIT=${{ github.sha }}
 
       # ---------- Web ----------
       - name: Build Web
         if: matrix.target == 'web'
-        run: flutter build web --release
+        run: flutter build web --release --dart-define=GIT_COMMIT=${{ github.sha }}
 
       # ---------- Linux ----------
       - name: Install Linux build dependencies
@@ -79,13 +79,13 @@ jobs:
 
       - name: Build Linux
         if: matrix.target == 'linux'
-        run: flutter build linux --release
+        run: flutter build linux --release --dart-define=GIT_COMMIT=${{ github.sha }}
 
       # ---------- iOS ----------
       # 无证书环境使用 --no-codesign 构建，再打包成未签名 ipa（可用 Sideloadly/AltStore 等自签安装）
       - name: Build iOS (no codesign)
         if: matrix.target == 'ios'
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --dart-define=GIT_COMMIT=${{ github.sha }}
 
       - name: Package unsigned IPA
         if: matrix.target == 'ios'
@@ -99,7 +99,7 @@ jobs:
       # ---------- macOS ----------
       - name: Build macOS
         if: matrix.target == 'macos'
-        run: flutter build macos --release
+        run: flutter build macos --release --dart-define=GIT_COMMIT=${{ github.sha }}
 
       - name: Package macOS app
         if: matrix.target == 'macos'
@@ -110,7 +110,7 @@ jobs:
       # ---------- Windows ----------
       - name: Build Windows
         if: matrix.target == 'windows'
-        run: flutter build windows --release
+        run: flutter build windows --release --dart-define=GIT_COMMIT=${{ github.sha }}
 
       - name: Package Windows
         if: matrix.target == 'windows'

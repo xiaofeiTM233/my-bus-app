@@ -17,4 +17,5 @@ export PATH="$FLUTTER_DIR/bin:$PATH"
 flutter config --no-analytics
 flutter doctor -v
 flutter pub get
-flutter build web --release
+# 注入构建 commit id（Vercel 提供 VERCEL_GIT_COMMIT_SHA）
+flutter build web --release --dart-define=GIT_COMMIT="${VERCEL_GIT_COMMIT_SHA:-}"
