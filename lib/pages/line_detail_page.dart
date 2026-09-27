@@ -76,9 +76,9 @@ class _LineDetailPageState extends State<LineDetailPage> {
         ),
       );
       if (widget.initialOrder != null && _selectedOrder == null) {
-        _selectStation(widget.initialOrder!, refresh: false);
-        await _fetchRt();
+        _selectStation(widget.initialOrder!);
       }
+      _startPolling();
     } catch (e) {
       if (!mounted) return;
       _error = e;
@@ -87,20 +87,27 @@ class _LineDetailPageState extends State<LineDetailPage> {
     if (mounted) setState(() => _loading = false);
   }
 
-  void _selectStation(int order, {bool refresh = true}) {
-    setState(() => _selectedOrder = order);
+  /// 启动实时轮询。未选站时以首站序查询：CMD104 的 list 是全线车辆
+  /// （每辆车带 index/绝对坐标），足够画出全线车辆位置与站间徽章；
+  /// 选中站后相对该站查询，额外提供精确到站预测。
+  void _startPolling() {
     _timer?.cancel();
     _timer = Timer.periodic(
       Duration(seconds: _app.refreshSeconds),
       (_) => _fetchRt(silent: true),
     );
-    if (refresh) _fetchRt();
+    _fetchRt(silent: true);
+  }
+
+  void _selectStation(int order) {
+    setState(() => _selectedOrder = order);
+    _startPolling();
   }
 
   Future<void> _fetchRt({bool silent = false}) async {
-    final order = _selectedOrder;
-    if (order == null) return;
     final app = context.read<AppState>();
+    if (!app.ready) return;
+    final order = _selectedOrder ?? 1;
     if (!silent) setState(() => _rtLoading = true);
     try {
       final rt = await app.client.realtime(
