@@ -78,9 +78,15 @@ class _StationStripState extends State<StationStrip> {
     final stations = widget.detail.stations;
     // 行驶中车辆分组：index=i → 车辆正驶向 1 基站序 i+1，位于站序 i 与 i+1 之间，
     // 即轨道上 x = i * _colW 的边界处（下一站之前，而非之后）
+    // 已到站车辆（statusType=0）：index+1 = 所在 1 基站序，画在该站轨道节点上
     final moving = <int, List<BusInfo>>{};
+    final arrived = <int, List<BusInfo>>{};
     for (final b in widget.rt?.buses ?? const <BusInfo>[]) {
-      if (!b.atStation) moving.putIfAbsent(b.index, () => []).add(b);
+      if (b.atStation) {
+        arrived.putIfAbsent(b.index + 1, () => []).add(b);
+      } else {
+        moving.putIfAbsent(b.index, () => []).add(b);
+      }
     }
     final width = stations.length * _colW + 24;
     final h = _height;
@@ -182,6 +188,35 @@ class _StationStripState extends State<StationStrip> {
                           ),
                         ),
                       ),
+                // 已到站车辆：画在所在站的轨道节点上（蓝色，区别于行驶中的橙色；
+                // 多辆时以节点为中心排开）
+                for (final e in arrived.entries)
+                  for (var k = 0; k < e.value.length; k++)
+                    Positioned(
+                      left: (e.key - 1) * _colW +
+                          _colW / 2 -
+                          11 -
+                          (e.value.length - 1) * 11 +
+                          k * 22.0,
+                      top: _trackY - 11,
+                      child: Container(
+                        key: ValueKey(
+                          'bus-at-${e.value[k].busNumber}-${e.key}',
+                        ),
+                        width: 22,
+                        height: 22,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: _pinColor, width: 1.5),
+                        ),
+                        child: const Icon(
+                          Icons.directions_bus,
+                          size: 14,
+                          color: _pinColor,
+                        ),
+                      ),
+                    ),
               ],
             ),
           ),
