@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../utils/city_locator.dart' show getSmartPosition;
 import '../utils/geo.dart';
 import '../utils/ui.dart';
 import '../pages/line_detail_page.dart';
@@ -101,7 +102,8 @@ class _NearbyPanelState extends State<NearbyPanel> {
           perm == LocationPermission.deniedForever) {
         throw '定位权限被拒绝，请检查系统权限设置';
       }
-      final pos = await Geolocator.getCurrentPosition();
+      // 智能取位：缓存位置优先，避免室内等 GPS 锁定十几秒
+      final pos = await getSmartPosition();
       final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
       _lat = gLat;
       _lng = gLng;

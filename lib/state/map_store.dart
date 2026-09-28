@@ -11,6 +11,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/models.dart';
+import '../utils/city_locator.dart' show getSmartPosition;
 import '../utils/geo.dart';
 import 'app_state.dart';
 
@@ -103,7 +104,8 @@ class MapStore extends ChangeNotifier {
   }
 
   Future<void> _getCurrentAndQuery(AppState app) async {
-    final pos = await Geolocator.getCurrentPosition();
+    // 智能取位：缓存位置优先，避免室内等 GPS 锁定十几秒
+    final pos = await getSmartPosition();
     final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
     me = LatLng(gLat, gLng);
     hint = '';

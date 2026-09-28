@@ -31,6 +31,28 @@ class LocatedCity {
   });
 }
 
+/// 智能取位：系统缓存位置 5 分钟内直接用（瞬时返回），
+/// 否则实时定位（中精度、10 秒超时，避免室内等 GPS 锁定十几秒），
+/// 实时失败再退回任意缓存位置。
+Future<Position> getSmartPosition() async {
+  final last = await Geolocator.getLastKnownPosition();
+  if (last != null &&
+      DateTime.now().difference(last.timestamp) < const Duration(minutes: 5)) {
+    return last;
+  }
+  try {
+    return await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.medium,
+        timeLimit: Duration(seconds: 10),
+      ),
+    );
+  } catch (_) {
+    if (last != null) return last;
+    rethrow;
+  }
+}
+
 class CityLocator {
   /// 定位并识别城市。权限被拒/定位失败抛中文异常字符串；
   /// 仅逆地理失败不抛错（name 为空，调用方可做兜底）。
@@ -49,24 +71,11 @@ class CityLocator {
       throw '定位服务未开启：手机请打开系统 GPS/位置服务；'
           'Windows 请在「设置→隐私和安全性→位置」中允许定位';
     }
-    Position? pos;
+    final Position pos;
     try {
-      pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 15),
-        ),
-      );
+      pos = await getSmartPosition();
     } catch (e) {
-      // 实时定位失败（服务异常/信号弱）时退回系统缓存位置
-      try {
-        pos = await Geolocator.getLastKnownPosition();
-      } catch (_) {
-        pos = null;
-      }
-      if (pos == null) {
-        throw '定位失败：$e\n请检查定位服务与权限后重试';
-      }
+      throw '定位失败：$e\n请检查定位服务与权限后重试';
     }
     final (gLat, gLng) = wgs2gcj(pos.latitude, pos.longitude);
     final raw = await _reverseCityName(pos.latitude, pos.longitude);
