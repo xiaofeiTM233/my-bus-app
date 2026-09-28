@@ -28,6 +28,31 @@ class LineMapWidget extends StatelessWidget {
       for (final s in stations) LatLng(s.lat, s.lon),
     ];
     final buses = rt?.buses ?? const <BusInfo>[];
+    // 拥堵着色：CMD104 speedlist 每项对应一个站间段（station i → i+1），
+    // 用站点 niheIndex 把段映射到轨迹点子区间；无数据时整条用主题色。
+    final polylines = <Polyline>[];
+    if (track.length > 1) {
+      polylines.add(Polyline(
+          points: track,
+          strokeWidth: 5,
+          color: cs.primary.withValues(alpha: 0.85)));
+      final speedList = rt?.speedList ?? const <SpeedInfo>[];
+      final all = detail.stations;
+      for (var i = 0;
+          i < all.length - 1 && i < speedList.length;
+          i++) {
+        final c = congestionColor(speedList[i].co);
+        if (c == null) continue;
+        final a = all[i].niheIndex;
+        final b = all[i + 1].niheIndex;
+        if (a < 0 || b <= a || b >= track.length) continue;
+        polylines.add(Polyline(
+          points: track.sublist(a, b + 1),
+          strokeWidth: 5,
+          color: Color(c),
+        ));
+      }
+    }
     return FlutterMap(
       options: MapOptions(
         initialCenter: fitCoords.isEmpty
@@ -46,13 +71,8 @@ class LineMapWidget extends StatelessWidget {
           userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
           errorTileCallback: (tile, error, stack) {},
         ),
-        if (track.length > 1)
-          PolylineLayer(polylines: [
-            Polyline(
-                points: track,
-                strokeWidth: 5,
-                color: cs.primary.withValues(alpha: 0.85)),
-          ]),
+        if (polylines.isNotEmpty)
+          PolylineLayer(polylines: polylines),
         MarkerLayer(markers: [
           for (final s in stations)
             Marker(

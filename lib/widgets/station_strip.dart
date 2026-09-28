@@ -94,6 +94,12 @@ class _StationStripState extends State<StationStrip> {
     }
     final width = stations.length * _colW + 24;
     final h = _height;
+    // 各站间段路况色（null = 无数据，保留底色绿）
+    final speedList = widget.rt?.speedList ?? const <SpeedInfo>[];
+    final segColors = [
+      for (var j = 0; j < stations.length - 1; j++)
+        j < speedList.length ? congestionColor(speedList[j].co) : null,
+    ];
     // 桌面端默认不允许鼠标拖拽滚动，这里放开所有限制设备，
     // 否则站序条在 Windows 上拖不动；另附细滚动条便于拖动。
     return ScrollConfiguration(
@@ -127,6 +133,16 @@ class _StationStripState extends State<StationStrip> {
                     ),
                   ),
                 ),
+                // 拥堵着色：每站间段覆盖一段（CMD104 speedlist，green/orange/red）
+                for (var j = 0; j < segColors.length; j++)
+                  if (segColors[j] != null)
+                    Positioned(
+                      left: j * _colW,
+                      width: _colW,
+                      top: _trackY - 1.5,
+                      height: 3,
+                      child: ColoredBox(color: Color(segColors[j]!)),
+                    ),
                 // 起点"起"徽标
                 Positioned(
                   left: 0,

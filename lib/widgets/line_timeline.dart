@@ -46,9 +46,19 @@ class LineTimeline extends StatelessWidget {
         if (i.isOdd) {
           final seg = i ~/ 2; // 站点 seg 与 seg+1 之间
           final buses = moving[seg] ?? const <BusInfo>[];
+          // 站间段路况色（CMD104 speedlist[seg]）
+          final speedList = rt?.speedList ?? const <SpeedInfo>[];
+          final segColor = seg < speedList.length
+              ? congestionColor(speedList[seg].co)
+              : null;
           return Row(children: [
             const SizedBox(width: 30),
-            Container(width: 3, height: buses.isEmpty ? 22 : 30, color: cs.outlineVariant),
+            Container(
+                width: 3,
+                height: buses.isEmpty ? 22 : 30,
+                color: segColor != null
+                    ? Color(segColor)
+                    : cs.outlineVariant),
             const SizedBox(width: 10),
             Expanded(
               child: Wrap(

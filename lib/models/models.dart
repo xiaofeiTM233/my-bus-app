@@ -22,6 +22,15 @@ double? _d(dynamic v) => double.tryParse(_s(v));
 
 int? _i(dynamic v) => int.tryParse(_s(v));
 
+/// 路况颜色（CMD104 speedlist.co）：green=畅通 orange=缓行 red=拥堵。
+/// 返回 ARGB 值；null 表示无数据/未知（回退默认色）。
+int? congestionColor(String? co) => switch (co) {
+      'green' => 0xFF3CB454,
+      'orange' => 0xFFFF9800,
+      'red' => 0xFFE53935,
+      _ => null,
+    };
+
 class City {
   final String name;
   City({required this.name});
