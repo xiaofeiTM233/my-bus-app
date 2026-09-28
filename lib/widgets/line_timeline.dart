@@ -11,6 +11,7 @@ class LineTimeline extends StatelessWidget {
   final int? selectedOrder;
   final ValueChanged<int> onSelectStation;
   final ValueChanged<int>? onStationDoubleTap; // 双击站点 → 站牌页
+  final ValueChanged<int>? onStationMenuTap; // 单击站台名 → 站台菜单
   final bool rtLoading;
   const LineTimeline(
       {super.key,
@@ -19,6 +20,7 @@ class LineTimeline extends StatelessWidget {
       required this.selectedOrder,
       required this.onSelectStation,
       this.onStationDoubleTap,
+      this.onStationMenuTap,
       required this.rtLoading});
 
   @override
@@ -89,9 +91,18 @@ class LineTimeline extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Text(stationNameHorizontal(s.showName),
-                    style: TextStyle(
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+                // 单击站台名：选中该站并打开站台菜单（原版交互）
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    onSelectStation(s.order);
+                    onStationMenuTap?.call(s.order);
+                  },
+                  child: Text(stationNameHorizontal(s.showName),
+                      style: TextStyle(
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500)),
+                ),
               ),
               if (s.statusText != null)
                 Container(

@@ -14,6 +14,7 @@ class StationStrip extends StatefulWidget {
   final int currentOrder;
   final ValueChanged<int>? onStationTap;
   final ValueChanged<int>? onStationDoubleTap; // 双击站点 → 站牌页
+  final ValueChanged<int>? onStationMenuTap; // 单击站台名 → 站台菜单
   const StationStrip({
     super.key,
     required this.detail,
@@ -21,6 +22,7 @@ class StationStrip extends StatefulWidget {
     required this.currentOrder,
     this.onStationTap,
     this.onStationDoubleTap,
+    this.onStationMenuTap,
   });
 
   @override
@@ -306,6 +308,22 @@ class _StationStripState extends State<StationStrip> {
               onDoubleTap: widget.onStationDoubleTap == null
                   ? null
                   : () => widget.onStationDoubleTap!(s.order),
+            ),
+          ),
+          // 站名区域（置于点击区之上）：单击站台名 → 选中并打开站台菜单
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 58,
+            bottom: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onStationMenuTap == null
+                  ? null
+                  : () {
+                      widget.onStationTap?.call(s.order);
+                      widget.onStationMenuTap!(s.order);
+                    },
             ),
           ),
         ],

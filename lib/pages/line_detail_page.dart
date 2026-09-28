@@ -53,6 +53,22 @@ class _LineDetailPageState extends State<LineDetailPage> {
   double? _stationLat;
   double? _stationLng;
 
+  /// 下车站经过的线路（CMD115）：与等车站线路求交集 = 共同线路
+  List<StationLine>? _alightLines;
+
+  /// 多线路对比展示列表：未选下车站时为等车站全部线路；
+  /// 选了下车站则为两站共同经过的线路
+  List<StationLine> get _displayLines {
+    final base = _stationLines;
+    if (base == null) return const [];
+    final alight = _alightLines;
+    if (_alightOrder == null || alight == null) return base;
+    final keys = {for (final l in alight) '${l.lineName}|${l.upperOrDown}'};
+    return base
+        .where((l) => keys.contains('${l.lineName}|${l.upperOrDown}'))
+        .toList();
+  }
+
   /// 下车站（站序）；null = 未选择
   int? _alightOrder;
 
@@ -90,6 +106,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
       _stationLines = null;
       _platforms = null;
       _alightOrder = null;
+      _alightLines = null;
       app.addHistory(
         SavedItem(
           type: 'line',
@@ -138,14 +155,18 @@ class _LineDetailPageState extends State<LineDetailPage> {
       (_) {
         _fetchRt(silent: true);
         _fetchStationLines(silent: true);
+        if (_alightOrder != null) _fetchAlightLines();
       },
     );
     _fetchRt(silent: true);
   }
 
   void _selectStation(int order) {
-    setState(() => _selectedOrder = order);
-    _alightOrder = null;
+    setState(() {
+      _selectedOrder = order;
+      _alightOrder = null;
+      _alightLines = null;
+    });
     _startPolling();
     _fetchStationLines();
   }
@@ -169,6 +190,33 @@ class _LineDetailPageState extends State<LineDetailPage> {
     } finally {
       if (mounted) setState(() => _rtLoading = false);
     }
+  }
+
+  /// 拉取下车站经过的线路（CMD115，ALL=1），用于与等车站求共同线路。
+  Future<void> _fetchAlightLines() async {
+    final alight =
+        _detail?.stations.where((s) => s.order == _alightOrder).firstOrNull;
+    if (alight == null || alight.name.isEmpty) {
+      _alightLines = null;
+      return;
+    }
+    final app = context.read<AppState>();
+    try {
+      var lines = await app.client.stationLines(
+        app.city,
+        alight.name,
+        lat: alight.lat == 0 ? null : alight.lat.toStringAsFixed(6),
+        lng: alight.lon == 0 ? null : alight.lon.toStringAsFixed(6),
+        all: true,
+      );
+      if (lines.isEmpty && (alight.lat != 0 || alight.lon != 0)) {
+        lines = await app.client.stationLines(app.city, alight.name, all: true);
+      }
+      _alightLines = lines;
+    } catch (_) {
+      _alightLines = null;
+    }
+    if (mounted) setState(() {});
   }
 
   /// 拉取等车站的多线路对比（CMD115，ALL=1）与同名站台（CMD209）。
@@ -229,6 +277,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
       _stationLines = null;
       _platforms = null;
       _alightOrder = null;
+      _alightLines = null;
     });
     _load();
   }
@@ -241,6 +290,12 @@ class _LineDetailPageState extends State<LineDetailPage> {
       _stationLines = null;
     });
     await _fetchStationLines();
+  }
+
+  /// 单击站台名（站序条/时间轴）→ 选中该站并弹出站台菜单。
+  void _openStationMenu(int order) {
+    if (_selectedOrder != order) _selectStation(order);
+    _showStationMenu();
   }
 
   /// 单击「等车站」站名 → 站台菜单（取代原双击跳转）。
@@ -433,6 +488,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
                 rt: _rt,
                 currentOrder: _selectedOrder ?? 1,
                 onStationTap: _selectStation,
+                onStationMenuTap: _openStationMenu,
               ),
             ),
           ),
@@ -449,6 +505,7 @@ class _LineDetailPageState extends State<LineDetailPage> {
                 rt: _rt,
                 selectedOrder: _selectedOrder,
                 onSelectStation: _selectStation,
+                onStationMenuTap: _openStationMenu,
                 rtLoading: _rtLoading,
               ),
             ),
@@ -673,7 +730,10 @@ class _LineDetailPageState extends State<LineDetailPage> {
                         ),
                       ),
                   ],
-                  onChanged: (v) => setState(() => _alightOrder = v),
+                  onChanged: (v) {
+                    setState(() => _alightOrder = v);
+                    _fetchAlightLines();
+                  },
                   underline: const SizedBox.shrink(),
                 ),
               ),
@@ -692,73 +752,86 @@ class _LineDetailPageState extends State<LineDetailPage> {
         ],
         const Divider(height: 12),
         Expanded(
-          child: _stationLines == null
-              ? const Center(
-                  child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2)))
-              : _stationLines!.isEmpty
-                  ? const Center(
-                      child: Text('该站台暂无线路数据',
-                          style: TextStyle(color: Colors.grey)))
-                  : ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      itemCount: _stationLines!.length,
-                      separatorBuilder: (_, _) => const Divider(
-                          height: 1, thickness: 0.5, indent: 16, endIndent: 16),
-                      itemBuilder: (_, i) {
-                        final l = _stationLines![i];
-                        final arrival = arrivalOf(l);
-                        final statusColor = switch (arrival.state) {
-                          ArrivalState.arriving => const Color(0xFF3CB454),
-                          ArrivalState.noService => orange,
-                          _ => orange,
-                        };
-                        final secondary = [
-                          if (l.nearTime.isNotEmpty) l.nearTime,
-                          if (l.nearDis.isNotEmpty) l.nearDis,
-                        ].join(' / ');
-                        return ListTile(
-                          dense: true,
-                          onTap: () => _openLine(l),
-                          title: Text(
-                            l.lineName,
-                            style: const TextStyle(
-                                fontSize: 15, fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: Text(
-                            '方向 ${l.upperOrDown == '1' ? '上行' : '下行'} · 本站第${l.stationOrder}站',
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey),
-                          ),
-                          trailing: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                arrival.summary,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700,
-                                  color: statusColor,
-                                ),
-                              ),
-                              if (secondary.isNotEmpty)
-                                Text(secondary,
-                                    style: const TextStyle(
-                                        fontSize: 11, color: Colors.grey)),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+          child: _buildStationLinesList(orange),
         ),
       ],
     );
     return expand
         ? Expanded(child: content)
         : SizedBox(height: 240, child: content);
+  }
+
+  /// 多线路对比列表：未选下车站 → 等车站全部线路；
+  /// 选了下车站 → 等车站与下车站**共同经过**的线路（交集）。
+  Widget _buildStationLinesList(Color orange) {
+    if (_stationLines == null) {
+      return const Center(
+          child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2)));
+    }
+    final display = _displayLines;
+    if (display.isEmpty) {
+      return Center(
+        child: Text(
+          _alightOrder != null
+              ? '没有线路同时经过等车站与所选下车站'
+              : '该站台暂无线路数据',
+          style: const TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: display.length,
+      separatorBuilder: (_, _) => const Divider(
+          height: 1, thickness: 0.5, indent: 16, endIndent: 16),
+      itemBuilder: (_, i) {
+        final l = display[i];
+        final arrival = arrivalOf(l);
+        final statusColor = switch (arrival.state) {
+          ArrivalState.arriving => const Color(0xFF3CB454),
+          ArrivalState.noService => orange,
+          _ => orange,
+        };
+        final secondary = [
+          if (l.nearTime.isNotEmpty) l.nearTime,
+          if (l.nearDis.isNotEmpty) l.nearDis,
+        ].join(' / ');
+        return ListTile(
+          dense: true,
+          onTap: () => _openLine(l),
+          title: Text(
+            l.lineName,
+            style:
+                const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+          ),
+          subtitle: Text(
+            '方向 ${l.upperOrDown == '1' ? '上行' : '下行'} · 本站第${l.stationOrder}站',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          trailing: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                arrival.summary,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: statusColor,
+                ),
+              ),
+              if (secondary.isNotEmpty)
+                Text(secondary,
+                    style:
+                        const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   /// 等车站选择器：同名站台（CMD209）下拉，切换后重查该站台线路。
