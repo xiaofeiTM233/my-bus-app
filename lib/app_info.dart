@@ -1,6 +1,6 @@
 /// 应用信息。
 /// 版本号需与 pubspec.yaml 的 version 保持一致；
-/// 构建提交号由 CI/构建命令通过 --dart-define=GIT_COMMIT=<sha> 注入，
+/// 构建提交号由 CI/构建命令通过 `--dart-define=GIT_COMMIT=<sha>` 注入，
 /// 本地直接构建时为空（不显示）。
 library;
 

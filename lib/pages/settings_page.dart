@@ -30,8 +30,9 @@ class SettingsPage extends StatelessWidget {
                     final name = await Navigator.of(context).push<String>(
                       MaterialPageRoute(builder: (_) => const CityPickerPage()),
                     );
-                    if (name != null && name.isNotEmpty)
+                    if (name != null && name.isNotEmpty) {
                       await app.setCity(name);
+                    }
                   },
                 ),
                 SwitchListTile(

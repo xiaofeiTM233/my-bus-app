@@ -81,8 +81,8 @@ class _MapPageState extends State<MapPage> {
               },
               onPositionChanged: (pos, hasGesture) {
                 // 本图手势 → 记入共享相机（不 notify，对侧地图稍后对齐）
-                if (hasGesture && pos.center != null) {
-                  store.reportCamera(pos.center!, pos.zoom!);
+                if (hasGesture) {
+                  store.reportCamera(pos.center, pos.zoom);
                 }
               },
             ),

@@ -320,11 +320,13 @@ class _StationBoardPageState extends State<StationBoardPage> {
                           child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.swap_horiz, size: 18),
                   // 原版语义：同名站台=2 显示「反向站台」，更多显示「切换站台」
-                  label: Text(_platforms != null && _platforms!.length > 2
-                      ? '切换站台'
-                      : '反向站台'),
+                  label: Text(
+                      _platforms != null && _platforms!.length > 2
+                          ? '切换站台'
+                          : '反向站台',
+                      style: const TextStyle(
+                          color: orange, fontWeight: FontWeight.w600)),
                   side: const BorderSide(color: orange),
-                  foregroundColor: orange,
                   onPressed:
                       (_platforms != null && _platforms!.length > 1 && !_reversing)
                           ? _reversePlatform
