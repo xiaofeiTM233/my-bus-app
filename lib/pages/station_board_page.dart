@@ -228,19 +228,22 @@ class _StationBoardPageState extends State<StationBoardPage> {
     );
   }
 
-  /// 站点位置小地图：站点标记 + 我的位置。
+  /// 站点位置小地图：站点标记 + 我的位置 + 全屏查看入口。
   Widget? _stationMap(BuildContext context, MapStore store) {
     final lat = _lat;
     final lng = _lng;
     if (lat == null || lng == null) return null;
     final cs = Theme.of(context).colorScheme;
     final station = LatLng(lat, lng);
+    final markers = _stationMarkers(cs, store, station);
     return SizedBox(
       height: 200,
       child: Stack(
         children: [
           FlutterMap(
-            options: MapOptions(initialCenter: station, initialZoom: 15),
+            // 高德栅格瓦片最大 18 级，超出会加载空白
+            options: MapOptions(
+                initialCenter: station, initialZoom: 15, maxZoom: 18),
             children: [
               TileLayer(
                 urlTemplate:
@@ -249,34 +252,105 @@ class _StationBoardPageState extends State<StationBoardPage> {
                 userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
                 errorTileCallback: (tile, error, stack) {},
               ),
-              MarkerLayer(markers: [
-                // 我的位置
-                if (store.me != null)
-                  Marker(
-                    point: store.me!,
-                    width: 16,
-                    height: 16,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.blue,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ),
-                // 站点
-                Marker(
-                  point: station,
-                  width: 30,
-                  height: 30,
-                  alignment: Alignment.topCenter,
-                  child: Icon(Icons.location_on_rounded,
-                      size: 30, color: cs.primary),
-                ),
-              ]),
+              MarkerLayer(markers: markers),
             ],
           ),
+          // 全屏查看
+          Positioned(
+            top: 6,
+            right: 6,
+            child: Material(
+              color: Colors.white,
+              shape: const CircleBorder(),
+              elevation: 2,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: () => _showFullMap(context, station, markers),
+                child: const Padding(
+                  padding: EdgeInsets.all(7),
+                  child:
+                      Icon(Icons.open_in_full, size: 16, color: Colors.black87),
+                ),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  List<Marker> _stationMarkers(
+      ColorScheme cs, MapStore store, LatLng station) {
+    return [
+      // 我的位置
+      if (store.me != null)
+        Marker(
+          point: store.me!,
+          width: 16,
+          height: 16,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.blue,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+          ),
+        ),
+      // 站点
+      Marker(
+        point: station,
+        width: 30,
+        height: 30,
+        alignment: Alignment.topCenter,
+        child:
+            Icon(Icons.location_on_rounded, size: 30, color: cs.primary),
+      ),
+    ];
+  }
+
+  /// 全屏地图：可自由缩放拖动（与站牌页地图共用标记）。
+  void _showFullMap(
+      BuildContext context, LatLng station, List<Marker> markers) {
+    showDialog(
+      context: context,
+      useSafeArea: false,
+      barrierColor: Colors.black,
+      builder: (ctx) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            FlutterMap(
+              options: MapOptions(
+                  initialCenter: station, initialZoom: 16, maxZoom: 18),
+              children: [
+                TileLayer(
+                  urlTemplate:
+                      'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                  subdomains: const ['1', '2', '3', '4'],
+                  userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
+                  errorTileCallback: (tile, error, stack) {},
+                ),
+                MarkerLayer(markers: markers),
+              ],
+            ),
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

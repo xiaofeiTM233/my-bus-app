@@ -59,6 +59,7 @@ class LineMapWidget extends StatelessWidget {
             ? const LatLng(24.91, 118.58)
             : fitCoords.first,
         initialZoom: 14,
+        maxZoom: 18, // 高德栅格瓦片最大 18 级，超出会加载空白
         initialCameraFit: fitCoords.isEmpty
             ? null
             : CameraFit.coordinates(coordinates: fitCoords, padding: const EdgeInsets.all(48)),

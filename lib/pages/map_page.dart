@@ -75,6 +75,7 @@ class _MapPageState extends State<MapPage> {
             options: MapOptions(
               initialCenter: store.camCenter ?? MapStore.defaultCenter,
               initialZoom: store.camZoom,
+              maxZoom: 18, // 高德栅格瓦片最大 18 级，超出会加载空白
               onMapReady: () {
                 _mapReady = true;
                 _syncCamera();
