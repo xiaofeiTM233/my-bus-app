@@ -123,6 +123,33 @@ class MyBusClient {
     ];
   }
 
+  /// CMD 209：按站名查站台详情，一次性返回该站名的所有同名/反向站台。
+  /// 实测响应：`{status:1, msg, info:[{name,lat,lon,dis,sameNum}], serverTime}`
+  /// —— info 在**顶层**（API分析报告的 data.info[] 记录有误）；
+  /// dis 为距 MYLAT/MYLNG 的米数；sameNum>1 表示存在反向站台。
+  /// 原版站台切换 = 本地循环站台数组（零请求）+ CMD115 带站台精确坐标重查。
+  Future<List<NearbyStation>> stationPlatforms(
+    String city,
+    String stationName, {
+    String? myLat,
+    String? myLng,
+    String? lat,
+    String? lng,
+  }) async {
+    final d = await _post(_base(city)..addAll({
+      'CMD': '209',
+      'STATIONNAME': stationName,
+      'MYLAT': myLat ?? '',
+      'MYLNG': myLng ?? '',
+      'LAT': lat ?? '',
+      'LNG': lng ?? '',
+    }));
+    // 兼容两种结构：顶层 info（实测）与 data.info（报告记录）
+    final List? info =
+        d['info'] as List? ?? (d['data'] is Map ? d['data']['info'] as List? : null);
+    return [for (final e in info ?? const []) NearbyStation.fromJson(e)];
+  }
+
   /// CMD 110：站点模糊搜索。
   Future<List<StationHit>> searchStation(
     String city,

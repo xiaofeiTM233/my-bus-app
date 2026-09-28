@@ -1,20 +1,23 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
 import '../state/app_state.dart';
+import '../state/map_store.dart';
+import '../utils/geo.dart';
 import '../utils/ui.dart';
 import 'line_detail_page.dart';
-import '../widgets/line_map.dart';
-import '../widgets/line_timeline.dart';
-import '../widgets/station_strip.dart';
 
-/// 站牌页：站点各线路（CMD115）→ 选线路进入横滑站牌（CMD103+CMD104 轮询）。
-/// 复刻原版 RTimeActivity 的核心视觉。
+/// 站牌页（参考原版「站点地图」）：
+/// 地图 + 站名卡片（反向站台换向）+ 全部经过线路对比。
+/// 选线路进入路线页（复用线路模块，定位到本站站序）。
+/// 导航（到这里去/从这出发）暂未实现，入口置灰占位。
 class StationBoardPage extends StatefulWidget {
   final String stationName;
+
+  /// 站台坐标（用于 CMD115 精确匹配与反向站台查找）
   final String? lat;
   final String? lng;
   const StationBoardPage({
@@ -28,57 +31,50 @@ class StationBoardPage extends StatefulWidget {
   State<StationBoardPage> createState() => _StationBoardPageState();
 }
 
-enum _Phase { loading, lines, candidates, board }
-
 class _StationBoardPageState extends State<StationBoardPage> {
   late String _name;
-  _Phase _phase = _Phase.loading;
+
+  /// 当前站台坐标（反向站台换向后更新）
+  double? _lat;
+  double? _lng;
+  bool _reversing = false;
+
+  bool _loading = true;
   Object? _error;
   List<StationLine>? _lines;
   List<StationHit>? _candidates;
 
-  StationLine? _selected;
-  LineDetail? _detail;
-  RealTime? _rt;
-  bool _rtLoading = false;
-  bool _verticalAxis = false; // 站牌轴纵向（默认横向滑条）
-  bool _mapView = false; // 地图视图（与线路详情页一致）
-  int _order = 1; // 当前查询站序（纵向时间轴里点站点可切换）
-  Timer? _timer;
+  /// 同名/反向站台列表（CMD209，含当前站台）；null = 未获取或获取失败
+  List<NearbyStation>? _platforms;
   String? _lastBoardKey; // 最近打开过的方向（列表里标「当前」）
 
   @override
   void initState() {
     super.initState();
     _name = widget.stationName;
-    _verticalAxis = context.read<AppState>().verticalAxis; // 默认站轴方向
+    _lat = double.tryParse(widget.lat ?? '');
+    _lng = double.tryParse(widget.lng ?? '');
     // 帧后执行: _loadLines 的错误路径会用到 ScaffoldMessenger(inherited),
     // initState 期间同步调用会抛 dependOnInherited 异常
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadLines());
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
   Future<void> _loadLines() async {
     final app = context.read<AppState>();
     setState(() {
-      _phase = _Phase.loading;
+      _loading = true;
       _error = null;
     });
     try {
       var lines = await app.client.stationLines(
         app.city,
         _name,
-        lat: widget.lat,
-        lng: widget.lng,
+        lat: _lat?.toStringAsFixed(6),
+        lng: _lng?.toStringAsFixed(6),
         all: true, // ALL=1：全部经过线路；ALL=0 只返回有实时数据的一小部分
       );
       // CMD115 按 MY 坐标就近匹配同名站，坐标偏差过大时返回空——去坐标重试
-      if (lines.isEmpty && (widget.lat != null || widget.lng != null)) {
+      if (lines.isEmpty && (_lat != null || _lng != null)) {
         lines = await app.client.stationLines(app.city, _name, all: true);
       }
       if (!mounted) return;
@@ -86,10 +82,26 @@ class _StationBoardPageState extends State<StationBoardPage> {
         final cands = await app.client.searchStation(app.city, _name);
         if (!mounted) return;
         _candidates = cands;
-        _phase = cands.isEmpty ? _Phase.lines : _Phase.candidates;
+        _lines = null;
+        if (cands.isEmpty) _lines = [];
       } else {
         _lines = lines;
-        _phase = _Phase.lines;
+        _candidates = null;
+      }
+      // 同名/反向站台列表（CMD209，原版站牌页加载时同样拉取）；失败不影响主流程
+      _platforms = null;
+      if (_name.isNotEmpty) {
+        try {
+          _platforms = await app.client.stationPlatforms(
+            app.city,
+            _name,
+            myLat: _lat?.toStringAsFixed(6),
+            myLng: _lng?.toStringAsFixed(6),
+            lat: _lat?.toStringAsFixed(6),
+            lng: _lng?.toStringAsFixed(6),
+          );
+        } catch (_) {}
+        if (!mounted) return;
       }
       app.addHistory(
         SavedItem(
@@ -104,137 +116,257 @@ class _StationBoardPageState extends State<StationBoardPage> {
       if (!mounted) return;
       setState(() {
         _error = e;
-        _phase = _Phase.lines;
+        _lines = null;
+        _candidates = null;
       });
       showError(context, e);
-    }
-  }
-
-  Future<void> _openBoard(StationLine l) async {
-    final app = context.read<AppState>();
-    setState(() {
-      _selected = l;
-      _order = l.stationOrder;
-      _lastBoardKey = '${l.lineName}|${l.upperOrDown}';
-      _phase = _Phase.board;
-      _rt = null;
-    });
-    _timer?.cancel();
-    try {
-      _detail = await app.client.lineStations(
-        app.city,
-        l.lineName,
-        l.upperOrDown,
-      );
-      if (!mounted) return;
-      await _refreshRt();
-      _timer = Timer.periodic(
-        Duration(seconds: app.refreshSeconds),
-        (_) => _refreshRt(silent: true),
-      );
-    } catch (e) {
-      if (mounted) showError(context, e);
-    }
-  }
-
-  Future<void> _refreshRt({bool silent = false}) async {
-    final l = _selected;
-    if (l == null) return;
-    final app = context.read<AppState>();
-    if (!silent) setState(() => _rtLoading = true);
-    try {
-      final rt = await app.client.realtime(
-        app.city,
-        l.lineName,
-        l.upperOrDown,
-        _order,
-      );
-      if (!mounted) return;
-      setState(() => _rt = rt);
-    } catch (e) {
-      if (!silent && mounted) showError(context, e);
     } finally {
-      if (mounted) setState(() => _rtLoading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _backToLines() {
-    _timer?.cancel();
-    setState(() {
-      _phase = _Phase.lines;
-      _selected = null;
-      _detail = null;
-      _rt = null;
-    });
+  /// 反向/切换站台（原版 stationChange 逻辑）：CMD209 已缓存的站台数组内
+  /// 循环取下一个不同坐标的站台（零额外请求），再以新站台坐标重查 CMD115。
+  Future<void> _reversePlatform() async {
+    final platforms = _platforms;
+    if (platforms == null || platforms.length < 2) return;
+    final lat = _lat;
+    final lng = _lng;
+    // 当前站台 = 距现有坐标最近的条目（同名站台可能仅相距几十米，
+    // 不能用「<50 米即当前」判断，否则双向都会命中）
+    var cur = 0;
+    var best = double.infinity;
+    for (var i = 0; i < platforms.length; i++) {
+      final p = platforms[i];
+      final d = (lat == null || lng == null)
+          ? 0.0
+          : distMeters(lat, lng, p.lat, p.lon);
+      if (d < best) {
+        best = d;
+        cur = i;
+      }
+    }
+    final next = platforms[(cur + 1) % platforms.length];
+    setState(() => _reversing = true);
+    try {
+      setState(() {
+        _lat = next.lat;
+        _lng = next.lon;
+      });
+      await _loadLines();
+    } finally {
+      if (mounted) setState(() => _reversing = false);
+    }
+  }
+
+  /// 选线路 → 路线页（定位到本站站序，进入该站实时轮询）。
+  void _openLine(StationLine l) {
+    setState(() => _lastBoardKey = '${l.lineName}|${l.upperOrDown}');
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LineDetailPage(
+          lineName: l.lineName,
+          dir: l.upperOrDown,
+          initialOrder: l.stationOrder,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final store = context.watch<MapStore>();
     final fav = SavedItem(type: 'station', city: app.city, name: _name, at: 0);
-    return PopScope(
-      canPop: _phase != _Phase.board,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _phase == _Phase.board) _backToLines();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          // 显示用横排括号（︵︶ → （）），请求仍用原始名 _name
-          title: Text(stationNameHorizontal(_name)),
-          actions: [
-            IconButton(
-              onPressed: () => app.toggleFavorite(
-                SavedItem(
-                  type: 'station',
-                  city: app.city,
-                  name: _name,
-                  subtitle: _lines == null ? null : '${_lines!.length}条线路',
-                  at: DateTime.now().millisecondsSinceEpoch,
-                ),
+    return Scaffold(
+      appBar: AppBar(
+        // 显示用横排括号（︵︶ → （）），请求仍用原始名 _name
+        title: Text(stationNameHorizontal(_name)),
+        actions: [
+          IconButton(
+            onPressed: () => app.toggleFavorite(
+              SavedItem(
+                type: 'station',
+                city: app.city,
+                name: _name,
+                subtitle: _lines == null ? null : '${_lines!.length}条线路',
+                at: DateTime.now().millisecondsSinceEpoch,
               ),
-              icon: Icon(app.isFavorite(fav) ? Icons.star : Icons.star_border),
-              tooltip: '收藏本站',
             ),
-            IconButton(onPressed: _loadLines, icon: const Icon(Icons.refresh)),
+            icon: Icon(app.isFavorite(fav) ? Icons.star : Icons.star_border),
+            tooltip: '收藏本站',
+          ),
+          IconButton(onPressed: _loadLines, icon: const Icon(Icons.refresh)),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? _retryView(context)
+              : _candidates != null
+                  ? _candidatesView(context)
+                  : Column(
+                      children: [
+                        ?_stationMap(context, store),
+                        _headerCard(context),
+                        Expanded(child: _linesView(context)),
+                      ],
+                    ),
+    );
+  }
+
+  Widget _retryView(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$_error', textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton.tonal(onPressed: _loadLines, child: const Text('重试')),
+        ],
+      ),
+    );
+  }
+
+  /// 站点位置小地图：站点标记 + 我的位置。
+  Widget? _stationMap(BuildContext context, MapStore store) {
+    final lat = _lat;
+    final lng = _lng;
+    if (lat == null || lng == null) return null;
+    final cs = Theme.of(context).colorScheme;
+    final station = LatLng(lat, lng);
+    return SizedBox(
+      height: 200,
+      child: Stack(
+        children: [
+          FlutterMap(
+            options: MapOptions(initialCenter: station, initialZoom: 15),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+                subdomains: const ['1', '2', '3', '4'],
+                userAgentPackageName: 'com.thirdparty.zsgj.my_bus_app',
+                errorTileCallback: (tile, error, stack) {},
+              ),
+              MarkerLayer(markers: [
+                // 我的位置
+                if (store.me != null)
+                  Marker(
+                    point: store.me!,
+                    width: 16,
+                    height: 16,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.blue,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+                // 站点
+                Marker(
+                  point: station,
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.topCenter,
+                  child: Icon(Icons.location_on_rounded,
+                      size: 30, color: cs.primary),
+                ),
+              ]),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 站名卡片 + 操作 chips（参考原版：反向站台 / 到这里去 / 从这出发）。
+  Widget _headerCard(BuildContext context) {
+    const orange = Color(0xFFF2691B);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.directions_bus_outlined,
+                    size: 20, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    stationNameHorizontal(_name),
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_platforms != null && _platforms!.length > 1)
+                  Text('${_platforms!.length} 个同名站台',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: [
+                ActionChip(
+                  avatar: _reversing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.swap_horiz, size: 18),
+                  // 原版语义：同名站台=2 显示「反向站台」，更多显示「切换站台」
+                  label: Text(_platforms != null && _platforms!.length > 2
+                      ? '切换站台'
+                      : '反向站台'),
+                  side: const BorderSide(color: orange),
+                  foregroundColor: orange,
+                  onPressed:
+                      (_platforms != null && _platforms!.length > 1 && !_reversing)
+                          ? _reversePlatform
+                          : null,
+                ),
+                const Tooltip(
+                  message: '导航功能开发中',
+                  child: ActionChip(
+                    avatar: Icon(Icons.near_me_outlined, size: 18),
+                    label: Text('到这里去'),
+                    onPressed: null,
+                  ),
+                ),
+                const Tooltip(
+                  message: '导航功能开发中',
+                  child: ActionChip(
+                    avatar: Icon(Icons.trip_origin, size: 18),
+                    label: Text('从这出发'),
+                    onPressed: null,
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
-        body: switch (_phase) {
-          _Phase.loading => const Center(child: CircularProgressIndicator()),
-          _Phase.lines => _linesView(context),
-          _Phase.candidates => _candidatesView(context),
-          _Phase.board => _boardView(context),
-        },
       ),
     );
   }
 
   Widget _linesView(BuildContext context) {
-    if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$_error', textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.tonal(onPressed: _loadLines, child: const Text('重试')),
-          ],
-        ),
-      );
-    }
     final lines = _lines;
     if (lines == null) return const SizedBox.shrink();
     if (lines.isEmpty) return const Center(child: Text('该站暂无线路数据'));
-    // 复刻原版「多线路对比」样式：
-    // 车号(粗体) + 「当前」橙框徽章 | 右侧橙色状态文字；下行灰色「方向 …」；细分隔线。
     const orange = Color(0xFFF2691B);
     const green = Color(0xFF3CB454);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Text(
-            '多线路对比',
+            '经过本站的线路（点按查看实时车辆）',
             style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
           ),
         ),
@@ -250,71 +382,86 @@ class _StationBoardPageState extends State<StationBoardPage> {
             itemBuilder: (_, i) {
               final l = lines[i];
               final arrival = arrivalOf(l);
-              final statusColor = switch (arrival.state) {
-                ArrivalState.arriving => green,
-                ArrivalState.noService => orange,
-                _ => orange,
+              // 右侧两行：状态（即将到站/N站/等待发车…）+ 时间/距离
+              final (String primary, Color statusColor, String secondary) =
+                  switch (arrival.state) {
+                ArrivalState.arriving => (
+                    arrival.raw.isEmpty ? '即将到站' : arrival.raw,
+                    green,
+                    '',
+                  ),
+                ArrivalState.approaching => (
+                    arrival.stationsAway != null
+                        ? '${arrival.stationsAway}站'
+                        : (arrival.raw.isEmpty ? '即将到站' : arrival.raw),
+                    orange,
+                    [
+                      if (l.nearTime.isNotEmpty) l.nearTime,
+                      if (l.nearDis.isNotEmpty) l.nearDis,
+                    ].join(' / '),
+                  ),
+                ArrivalState.noService => (
+                    arrival.raw.isEmpty ? '暂无车辆' : arrival.raw,
+                    orange,
+                    '',
+                  ),
+                ArrivalState.unknown => ('—', Colors.grey, ''),
               };
               final isCurrent =
                   _lastBoardKey == '${l.lineName}|${l.upperOrDown}';
-              return InkWell(
-                onTap: () => _openBoard(l),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            l.lineName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (isCurrent) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 5,
-                                vertical: 1,
-                              ),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: orange),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                '当前',
-                                style: TextStyle(fontSize: 11, color: orange),
-                              ),
-                            ),
-                          ],
-                          const Spacer(),
-                          Text(
-                            arrival.summary,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: statusColor,
-                            ),
-                          ),
-                        ],
+              return ListTile(
+                onTap: () => _openLine(l),
+                title: Row(
+                  children: [
+                    Text(
+                      l.lineName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '方向 ${l.upperOrDown == '1' ? '上行' : '下行'}'
-                        ' · 本站第${l.stationOrder}站',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey,
+                    ),
+                    if (isCurrent) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: orange),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '当前',
+                          style: TextStyle(fontSize: 11, color: orange),
                         ),
                       ),
                     ],
-                  ),
+                    const Spacer(),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          primary,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor,
+                          ),
+                        ),
+                        if (secondary.isNotEmpty)
+                          Text(
+                            secondary,
+                            style:
+                                const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                subtitle: Text(
+                  '方向 ${l.upperOrDown == '1' ? '上行' : '下行'} · 本站第${l.stationOrder}站',
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
                 ),
               );
             },
@@ -338,263 +485,18 @@ class _StationBoardPageState extends State<StationBoardPage> {
         for (final c in cands)
           ListTile(
             leading: const Icon(Icons.place_outlined),
-            title: Text(c.stationName),
+            title: Text(stationNameHorizontal(c.stationName)),
             subtitle: c.sameNameNum > 0 ? Text('同名站 ${c.sameNameNum} 个') : null,
             onTap: () {
               setState(() {
                 _name = c.stationName;
                 _candidates = null;
+                _lat = null;
+                _lng = null;
               });
               _loadLines();
             },
           ),
-      ],
-    );
-  }
-
-  Widget _boardView(BuildContext context) {
-    final l = _selected!;
-    final rt = _rt;
-    final cs = Theme.of(context).colorScheme;
-    final axisToggle = IconButton(
-      onPressed: _mapView
-          ? null
-          : () => setState(() => _verticalAxis = !_verticalAxis),
-      icon: Icon(_verticalAxis ? Icons.swap_horiz : Icons.swap_vert),
-      tooltip: _verticalAxis ? '横向站牌' : '纵向站轴',
-    );
-    final mapToggle = IconButton(
-      onPressed: () => setState(() => _mapView = !_mapView),
-      icon: Icon(_mapView ? Icons.view_list : Icons.map_outlined),
-      tooltip: _mapView ? '站轴' : '地图',
-    );
-    final header = GestureDetector(
-      // 双击线路标题 → 打开该线路的路线页（定位到本站站序）
-      onDoubleTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => LineDetailPage(
-              lineName: l.lineName,
-              dir: l.upperOrDown,
-              initialOrder: _order,
-            ),
-          ),
-        );
-      },
-      child: Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: ListTile(
-        leading: IconButton(
-          onPressed: _backToLines,
-          icon: const Icon(Icons.arrow_back),
-        ),
-        title: Text(
-          '${l.lineName} ${l.upperOrDown == '1' ? '上行' : '下行'}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        subtitle: Text('本站站序 $_order · 点按刷新 · 双击看全程'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            axisToggle,
-            mapToggle,
-            // 固定尺寸槽位：加载圈与刷新按钮互换时宽度不变，避免整行抖动
-            SizedBox(
-              width: 44,
-              height: 44,
-              child: Center(
-                child: _rtLoading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : IconButton(
-                        onPressed: () => _refreshRt(),
-                        icon: const Icon(Icons.refresh),
-                      ),
-              ),
-            ),
-          ],
-        ),
-        onTap: () => _refreshRt(),
-      ),
-      ),
-    );
-    final mapCard = (context.read<AppState>().mapAlwaysOn && _detail != null)
-        ? SizedBox(
-            height: 180,
-            child: LineMapWidget(
-              detail: _detail!,
-              rt: _rt,
-              selectedOrder: _order,
-            ),
-          )
-        : null;
-
-    // 地图视图：全幅线路地图（车辆位置 + 编号站点），底部保留到站预测
-    if (_mapView) {
-      return Column(
-        children: [
-          header,
-          Expanded(
-            child: _detail == null
-                ? const Center(child: CircularProgressIndicator())
-                : LineMapWidget(
-                    detail: _detail!,
-                    rt: rt,
-                    selectedOrder: _order,
-                  ),
-          ),
-          Card(
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: _predictions(context, rt, cs),
-            ),
-          ),
-        ],
-      );
-    }
-
-    if (_verticalAxis) {
-      // 纵向站轴: 时间轴占满余下空间, 预测卡固定底部
-      return Column(
-        children: [
-          ?mapCard,
-          header,
-          Expanded(
-            child: Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: _detail == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : LineTimeline(
-                        detail: _detail!,
-                        rt: _rt,
-                        selectedOrder: _order,
-                        rtLoading: _rtLoading,
-                        onSelectStation: (o) {
-                          setState(() => _order = o);
-                          _refreshRt();
-                        },
-                      ),
-              ),
-            ),
-          ),
-          Card(
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: _predictions(context, rt, cs),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          ?mapCard,
-          header,
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: _detail == null
-                  ? const SizedBox(
-                      height: 120,
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : StationStrip(
-                      detail: _detail!,
-                      rt: _rt,
-                      currentOrder: _order,
-                      onStationTap: (o) {
-                        setState(() => _order = o);
-                        _refreshRt();
-                      },
-                    ),
-            ),
-          ),
-          Card(
-            margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: _predictions(context, rt, cs),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _predictions(BuildContext context, RealTime? rt, ColorScheme cs) {
-    if (rt == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (rt.stopped) {
-      return const Center(
-        child: Text('该线路已停运', style: TextStyle(fontSize: 16)),
-      );
-    }
-    if (!rt.hasRealtime) {
-      return Center(
-        child: Text(
-          rt.planTime.isEmpty ? '暂无实时数据' : '非实时时段（计划班次 ${rt.planTime}）',
-          style: const TextStyle(fontSize: 15),
-        ),
-      );
-    }
-    final preds = rt.predictions.where((p) => p.count >= 0).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (preds.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: Text('暂无车辆接近')),
-          )
-        else ...[
-          Text(
-            preds.first.busNumber,
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${preds.first.tips} · 约${preds.first.timeTips} · ${preds.first.distTips}',
-            style: TextStyle(
-              fontSize: 18,
-              color: cs.primary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const Divider(height: 20),
-          for (final p in preds.skip(1).take(4))
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                children: [
-                  Text(p.busNumber),
-                  const Spacer(),
-                  Text(
-                    '${p.tips} · ${p.timeTips} · ${p.distTips}',
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                ],
-              ),
-            ),
-        ],
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            '运营中${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'} · ${rt.buses.length}辆车',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ),
       ],
     );
   }
