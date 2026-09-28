@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/models.dart';
@@ -56,6 +57,14 @@ class _LineDetailPageState extends State<LineDetailPage> {
   /// 下车站经过的线路（CMD115）：与等车站线路求交集 = 共同线路
   List<StationLine>? _alightLines;
 
+  // ─── 应用内提醒（上车/下车/定制；页面级，离开即失效） ───
+  bool _remindBoard = false; // 上车提醒：车即将到等车站
+  bool _remindAlight = false; // 下车提醒：车即将到下车站
+  bool _boardReminded = false; // 本次开启是否已触发过
+  DateTime? _remindAt; // 定制提醒时间
+  Timer? _remindTimer;
+  Timer? _bannerTimer;
+
   /// 多线路对比展示列表：未选下车站时为等车站全部线路；
   /// 选了下车站则为两站共同经过的线路
   List<StationLine> get _displayLines {
@@ -84,6 +93,8 @@ class _LineDetailPageState extends State<LineDetailPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _remindTimer?.cancel();
+    _bannerTimer?.cancel();
     super.dispose();
   }
 
@@ -185,11 +196,243 @@ class _LineDetailPageState extends State<LineDetailPage> {
       );
       if (!mounted) return;
       setState(() => _rt = rt);
+      _checkReminders();
     } catch (e) {
       if (!silent && mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _rtLoading = false);
     }
+  }
+
+  // ─── 提醒 ───
+
+  /// 每次实时数据刷新后检查提醒条件（单次触发后自动关闭对应开关）。
+  void _checkReminders() {
+    final rt = _rt;
+    if (rt == null || !mounted) return;
+    final st = _selectedStation;
+    // 上车提醒：任一车辆即将到站（tips 含「即将到站/进站」或仅剩 1 站）
+    if (_remindBoard && !_boardReminded && st != null) {
+      final soon = rt.predictions.any((p) =>
+              p.tips.contains('即将到站') ||
+              p.tips.contains('进站') ||
+              (p.count >= 0 && p.count <= 1)) ||
+          rt.buses.any((b) =>
+              b.atStation && b.index + 1 == st.order);
+      if (soon) {
+        _boardReminded = true;
+        _remindBoard = false;
+        _fireReminder('上车提醒',
+            '${widget.lineName}即将到达等车站「${stationNameHorizontal(st.showName)}」');
+      }
+    }
+    // 下车提醒：车辆下一站即下车站（index+1 == 下车站序，含已到站）
+    if (_remindAlight && _alightOrder != null) {
+      final alight = _detail?.stations
+          .where((s) => s.order == _alightOrder)
+          .firstOrNull;
+      final soon = rt.buses.any((b) =>
+          b.index == _alightOrder! - 1 ||
+          (b.atStation && b.index + 1 == _alightOrder));
+      if (soon) {
+        _remindAlight = false;
+        _fireReminder('下车提醒',
+            '${widget.lineName}即将到达下车站「${stationNameHorizontal(alight?.showName ?? '')}」');
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// 触达：MaterialBanner + 提示音 + 震动，12 秒后自动收起。
+  void _fireReminder(String title, String body) {
+    if (!mounted) return;
+    SystemSound.play(SystemSoundType.alert);
+    HapticFeedback.heavyImpact();
+    ScaffoldMessenger.of(context)
+      ..hideCurrentMaterialBanner()
+      ..showMaterialBanner(
+        MaterialBanner(
+          leading: const Icon(Icons.notifications_active,
+              color: Color(0xFFF2691B)),
+          content: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 2),
+              Text(body, style: const TextStyle(fontSize: 13)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer(
+      const Duration(seconds: 12),
+      () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
+    );
+  }
+
+  /// 定制提醒：到点后播报一次等车站车辆情况。
+  void _checkTimedReminder() {
+    final at = _remindAt;
+    if (at == null || !mounted) return;
+    if (DateTime.now().isBefore(at)) return;
+    _remindAt = null;
+    _remindTimer?.cancel();
+    final rt = _rt;
+    final st = _selectedStation;
+    String body;
+    if (rt == null) {
+      body = '暂无实时数据';
+    } else if (rt.stopped) {
+      body = '该线路已停运';
+    } else if (!rt.hasRealtime) {
+      body = '暂无实时数据${rt.planTime.isEmpty ? '' : '（计划班次 ${rt.planTime}）'}';
+    } else {
+      final p = rt.predictions.firstOrNull;
+      body = p == null
+          ? '暂无车辆接近'
+          : '${p.tips} ${[p.timeTips, p.distTips].where((s) => s.isNotEmpty).join(' / ')}';
+    }
+    _fireReminder('定制提醒 · ${widget.lineName}',
+        '等车站「${stationNameHorizontal(st?.showName ?? '')}」车辆情况：$body');
+  }
+
+  /// 提醒菜单（参考原版：上车提醒 / 下车提醒 / 定制提醒）。
+  void _showReminderSheet() {
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (sheetCtx, setSheet) {
+          Widget item(
+            IconData icon,
+            String title,
+            String subtitle, {
+            bool enabled = true,
+            bool on = false,
+            VoidCallback? onTap,
+            Widget? trailingExtra,
+          }) {
+            final color = enabled ? null : Colors.grey;
+            return ListTile(
+              enabled: enabled,
+              leading: Icon(icon, color: color),
+              title: Text(title, style: TextStyle(color: color)),
+              subtitle: Text(subtitle, style: TextStyle(color: color)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ?trailingExtra,
+                  Icon(
+                    on
+                        ? Icons.toggle_on_rounded
+                        : Icons.toggle_off_rounded,
+                    size: 28,
+                    color: on ? Theme.of(sheetCtx).colorScheme.primary : null,
+                  ),
+                ],
+              ),
+              onTap: onTap,
+            );
+          }
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                item(
+                  Icons.where_to_vote_outlined,
+                  '上车提醒',
+                  '车即将到达等车站时提醒',
+                  on: _remindBoard,
+                  onTap: () {
+                    setSheet(() {});
+                    setState(() {
+                      _remindBoard = !_remindBoard;
+                      _boardReminded = false;
+                    });
+                  },
+                ),
+                item(
+                  Icons.directions_outlined,
+                  '下车提醒',
+                  _alightOrder == null
+                      ? '请先在下方选择下车站'
+                      : '车即将到达下车站时提醒',
+                  enabled: _alightOrder != null,
+                  on: _remindAlight,
+                  onTap: () {
+                    setState(() => _remindAlight = !_remindAlight);
+                    setSheet(() {});
+                  },
+                ),
+                item(
+                  Icons.schedule_outlined,
+                  '定制提醒',
+                  _remindAt == null
+                      ? '在选定的时间提醒车辆到站情况'
+                      : '将在 '
+                          '${_remindAt!.hour.toString().padLeft(2, '0')}:${_remindAt!.minute.toString().padLeft(2, '0')} 提醒',
+                  on: _remindAt != null,
+                  trailingExtra: _remindAt == null
+                      ? null
+                      : TextButton(
+                          onPressed: () {
+                            _remindAt = null;
+                            _remindTimer?.cancel();
+                            setState(() {});
+                            setSheet(() {});
+                          },
+                          child: const Text('取消定制'),
+                        ),
+                  onTap: () async {
+                    final now = DateTime.now();
+                    final t = await showTimePicker(
+                      context: sheetCtx,
+                      initialTime: TimeOfDay.fromDateTime(
+                          now.add(const Duration(minutes: 5))),
+                    );
+                    if (t == null || !mounted) return;
+                    var at = DateTime(now.year, now.month, now.day, t.hour, t.minute);
+                    if (at.isBefore(now)) at = at.add(const Duration(days: 1));
+                    _remindAt = at;
+                    _remindTimer?.cancel();
+                    _remindTimer = Timer.periodic(
+                        const Duration(seconds: 1), (_) => _checkTimedReminder());
+                    setState(() {});
+                    setSheet(() {});
+                  },
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    '提醒仅在当前页面保持有效',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(sheetCtx),
+                    child: const Text('取消'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
   }
 
   /// 拉取下车站经过的线路（CMD115，ALL=1），用于与等车站求共同线路。
@@ -430,7 +673,14 @@ class _LineDetailPageState extends State<LineDetailPage> {
                   )),
               active: fav,
             ),
-            const _BarItem(Icons.notifications_none, '提醒'),
+            _BarItem(
+              _remindBoard || _remindAlight || _remindAt != null
+                  ? Icons.notifications_active
+                  : Icons.notifications_none,
+              '提醒',
+              onTap: _showReminderSheet,
+              active: _remindBoard || _remindAlight || _remindAt != null,
+            ),
             _BarItem(
               _mapView ? Icons.view_list : Icons.map_outlined,
               '地图',
