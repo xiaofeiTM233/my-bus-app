@@ -327,7 +327,7 @@ class _StationStripState extends State<StationStrip> {
                   : () => widget.onStationDoubleTap!(s.order),
             ),
           ),
-          // 站名区域（置于点击区之上）：单击站台名 → 选中并打开站台菜单
+          // 站名区域（置于点击区之上）：未选中→单击选中；已选中→单击弹站台菜单
           Positioned(
             left: 0,
             right: 0,
@@ -338,8 +338,11 @@ class _StationStripState extends State<StationStrip> {
               onTap: widget.onStationMenuTap == null
                   ? null
                   : () {
-                      widget.onStationTap?.call(s.order);
-                      widget.onStationMenuTap!(s.order);
+                      if (widget.currentOrder == s.order) {
+                        widget.onStationMenuTap!(s.order);
+                      } else {
+                        widget.onStationTap?.call(s.order);
+                      }
                     },
             ),
           ),

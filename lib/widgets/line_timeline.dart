@@ -101,12 +101,15 @@ class LineTimeline extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                // 单击站台名：选中该站并打开站台菜单（原版交互）
+                // 单击站台名：未选中→选中；已选中→打开站台菜单（原版交互）
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    onSelectStation(s.order);
-                    onStationMenuTap?.call(s.order);
+                    if (selected) {
+                      onStationMenuTap?.call(s.order);
+                    } else {
+                      onSelectStation(s.order);
+                    }
                   },
                   child: Text(stationNameHorizontal(s.showName),
                       style: TextStyle(
