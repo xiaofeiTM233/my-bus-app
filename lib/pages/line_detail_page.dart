@@ -10,6 +10,7 @@ import '../utils/geo.dart';
 import '../utils/ui.dart';
 import '../widgets/line_map.dart';
 import '../widgets/line_timeline.dart';
+import '../widgets/station_lines_list.dart';
 import '../widgets/station_strip.dart';
 import 'station_board_page.dart';
 
@@ -1032,55 +1033,10 @@ class _LineDetailPageState extends State<LineDetailPage> {
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.only(bottom: 8),
-      itemCount: display.length,
-      separatorBuilder: (_, _) => const Divider(
-          height: 1, thickness: 0.5, indent: 16, endIndent: 16),
-      itemBuilder: (_, i) {
-        final l = display[i];
-        final arrival = arrivalOf(l);
-        final statusColor = switch (arrival.state) {
-          ArrivalState.arriving => const Color(0xFF3CB454),
-          ArrivalState.noService => orange,
-          _ => orange,
-        };
-        final secondary = [
-          if (l.nearTime.isNotEmpty) l.nearTime,
-          if (l.nearDis.isNotEmpty) l.nearDis,
-        ].join(' / ');
-        return ListTile(
-          dense: true,
-          onTap: () => _openLine(l),
-          title: Text(
-            l.lineName,
-            style:
-                const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          subtitle: Text(
-            '方向 ${l.upperOrDown == '1' ? '上行' : '下行'} · 本站第${l.stationOrder}站',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          trailing: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                arrival.summary,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: statusColor,
-                ),
-              ),
-              if (secondary.isNotEmpty)
-                Text(secondary,
-                    style:
-                        const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-        );
-      },
+    return StationLinesList(
+      lines: display,
+      currentKey: '${widget.lineName}|$_dir',
+      onTap: _openLine,
     );
   }
 

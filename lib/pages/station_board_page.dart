@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../state/map_store.dart';
 import '../utils/geo.dart';
 import '../utils/ui.dart';
+import '../widgets/station_lines_list.dart';
 import 'line_detail_page.dart';
 
 /// 站牌页（参考原版「站点地图」）：
@@ -443,8 +444,6 @@ class _StationBoardPageState extends State<StationBoardPage> {
     final lines = _lines;
     if (lines == null) return const SizedBox.shrink();
     if (lines.isEmpty) return const Center(child: Text('该站暂无线路数据'));
-    const orange = Color(0xFFF2691B);
-    const green = Color(0xFF3CB454);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -456,100 +455,10 @@ class _StationBoardPageState extends State<StationBoardPage> {
           ),
         ),
         Expanded(
-          child: ListView.separated(
-            itemCount: lines.length,
-            separatorBuilder: (_, _) => const Divider(
-              height: 1,
-              thickness: 0.5,
-              indent: 16,
-              endIndent: 16,
-            ),
-            itemBuilder: (_, i) {
-              final l = lines[i];
-              final arrival = arrivalOf(l);
-              // 右侧两行：状态（即将到站/N站/等待发车…）+ 时间/距离
-              final (String primary, Color statusColor, String secondary) =
-                  switch (arrival.state) {
-                ArrivalState.arriving => (
-                    arrival.raw.isEmpty ? '即将到站' : arrival.raw,
-                    green,
-                    '',
-                  ),
-                ArrivalState.approaching => (
-                    arrival.stationsAway != null
-                        ? '${arrival.stationsAway}站'
-                        : (arrival.raw.isEmpty ? '即将到站' : arrival.raw),
-                    orange,
-                    [
-                      if (l.nearTime.isNotEmpty) l.nearTime,
-                      if (l.nearDis.isNotEmpty) l.nearDis,
-                    ].join(' / '),
-                  ),
-                ArrivalState.noService => (
-                    arrival.raw.isEmpty ? '暂无车辆' : arrival.raw,
-                    orange,
-                    '',
-                  ),
-                ArrivalState.unknown => ('—', Colors.grey, ''),
-              };
-              final isCurrent =
-                  _lastBoardKey == '${l.lineName}|${l.upperOrDown}';
-              return ListTile(
-                onTap: () => _openLine(l),
-                title: Row(
-                  children: [
-                    Text(
-                      l.lineName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (isCurrent) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: orange),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          '当前',
-                          style: TextStyle(fontSize: 11, color: orange),
-                        ),
-                      ),
-                    ],
-                    const Spacer(),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          primary,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: statusColor,
-                          ),
-                        ),
-                        if (secondary.isNotEmpty)
-                          Text(
-                            secondary,
-                            style:
-                                const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-                subtitle: Text(
-                  '方向 ${l.upperOrDown == '1' ? '上行' : '下行'} · 本站第${l.stationOrder}站',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
-                ),
-              );
-            },
+          child: StationLinesList(
+            lines: lines,
+            currentKey: _lastBoardKey,
+            onTap: _openLine,
           ),
         ),
       ],
