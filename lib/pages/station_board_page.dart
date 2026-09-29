@@ -102,6 +102,15 @@ class _StationBoardPageState extends State<StationBoardPage> {
           );
         } catch (_) {}
         if (!mounted) return;
+        // 无坐标进入（最近/收藏/搜索）时补齐：地图与反向站台即可用
+        if ((_lat == null || _lng == null) &&
+            _platforms != null &&
+            _platforms!.isNotEmpty) {
+          setState(() {
+            _lat = _platforms!.first.lat;
+            _lng = _platforms!.first.lon;
+          });
+        }
       }
       app.addHistory(
         SavedItem(
