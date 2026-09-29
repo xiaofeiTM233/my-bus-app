@@ -133,11 +133,12 @@ class _StationStripState extends State<StationStrip> {
                     ),
                   ),
                 ),
-                // 拥堵着色：每站间段覆盖一段（CMD104 speedlist，green/orange/red）
+                // 拥堵着色：从节点 j 中心涂到节点 j+1 中心（站间段），
+                // 不覆盖站台节点本身（CMD104 speedlist，green/orange/red）
                 for (var j = 0; j < segColors.length; j++)
                   if (segColors[j] != null)
                     Positioned(
-                      left: j * _colW,
+                      left: j * _colW + _colW / 2,
                       width: _colW,
                       top: _trackY - 1.5,
                       height: 3,
