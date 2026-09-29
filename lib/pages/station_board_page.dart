@@ -241,9 +241,9 @@ class _StationBoardPageState extends State<StationBoardPage> {
       child: Stack(
         children: [
           FlutterMap(
-            // 高德栅格瓦片最大 18 级，超出会加载空白
+            // 高德栅格瓦片最大 18 级，超出会加载空白；默认放到最大
             options: MapOptions(
-                initialCenter: station, initialZoom: 15, maxZoom: 18),
+                initialCenter: station, initialZoom: 18, maxZoom: 18),
             children: [
               TileLayer(
                 urlTemplate:
@@ -321,7 +321,7 @@ class _StationBoardPageState extends State<StationBoardPage> {
           children: [
             FlutterMap(
               options: MapOptions(
-                  initialCenter: station, initialZoom: 16, maxZoom: 18),
+                  initialCenter: station, initialZoom: 18, maxZoom: 18),
               children: [
                 TileLayer(
                   urlTemplate:
